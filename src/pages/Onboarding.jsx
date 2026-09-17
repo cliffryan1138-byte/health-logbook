@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import Icon from '../lib/icons'
 
 // Shown once, when a signed-in user has no profiles row yet. Writes the row the
 // dashboard and the health-tracker skill both read.
@@ -43,7 +42,7 @@ export default function Onboarding() {
   return (
     <div className="authpage">
       <form className="authcard" onSubmit={submit}>
-        <div className="glyph"><Icon name="pen" /></div>
+        <img className="mark" src="/sparky.png" alt="" width="72" height="72" />
         <div>
           <h1>Set up your logbook</h1>
           <p>Two questions. You can change both later.</p>

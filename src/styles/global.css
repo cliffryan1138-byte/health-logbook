@@ -225,3 +225,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .stat-grid { gap: 18px; }
   .who .when { margin-left: 0; width: 100%; }
 }
+
+/* Sparky. He is a detailed mascot, so he only appears where there is room for
+   him to read: the auth cards at 72px, the favicon, and the installed app icon.
+   The dashboard header keeps the 34px line glyph, where a full illustration
+   would turn to mush. */
+.authcard .mark { display: block; margin-bottom: 14px; border-radius: 12px; }

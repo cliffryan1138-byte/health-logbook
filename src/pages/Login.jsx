@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import Icon from '../lib/icons'
 
 // RECOVERY NOTE: everything down to the end of submit() is the original file,
 // recovered from the Vercel deployment. The form markup was lost to a response
@@ -37,7 +36,7 @@ export default function Login() {
   return (
     <div className="authpage">
       <form className="authcard" onSubmit={submit}>
-        <div className="glyph"><Icon name="logo" /></div>
+        <img className="mark" src="/sparky.png" alt="" width="72" height="72" />
         <div>
           <h1>Health-Logbook</h1>
           <p>The household health log. Sign in to see your dashboard.</p>
