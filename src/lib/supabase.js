@@ -8,7 +8,7 @@ const key = import.meta.env.VITE_SUPABASE_ANON_KEY
 if (!url || !key) {
   document.body.innerHTML =
     '<div style="font-family:system-ui;padding:40px;max-width:520px;margin:0 auto">' +
-    '<h2>Logbook is not configured</h2>' +
+    '<h2>Health-Logbook is not configured</h2>' +
     '<p>VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY must be set in the build environment.</p></div>'
   throw new Error('Missing Supabase env vars')
 }

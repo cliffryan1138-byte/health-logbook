@@ -1,4 +1,4 @@
-# Logbook
+# Health-Logbook
 
 The household health log — a Vite + React PWA on Supabase, deployed to
 `healthtrack.wastegate.ai`.

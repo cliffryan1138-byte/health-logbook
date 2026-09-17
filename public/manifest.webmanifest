@@ -1,6 +1,6 @@
 {
-  "name": "Logbook",
-  "short_name": "Logbook",
+  "name": "Health-Logbook",
+  "short_name": "Health-Logbook",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#F4F2F1",

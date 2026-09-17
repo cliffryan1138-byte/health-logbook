@@ -81,7 +81,7 @@ export default function Dashboard() {
       <header className="topbar">
         <div className="brand">
           <span className="glyph"><Icon name="logo" /></span>
-          <h1>Logbook</h1>
+          <h1>Health-Logbook</h1>
         </div>
         <button className="signout" onClick={signOut}>Sign out</button>
       </header>
@@ -211,7 +211,7 @@ export default function Dashboard() {
 
       <footer className="foot">
         <p>
-          Estimates, not measurements. Logbook is a record and a pattern-finder —
+          Estimates, not measurements. Health-Logbook is a record and a pattern-finder —
           not medical advice.
         </p>
         <FeedbackBox profile={profile} />

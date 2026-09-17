@@ -39,7 +39,7 @@ export default function Login() {
       <form className="authcard" onSubmit={submit}>
         <div className="glyph"><Icon name="logo" /></div>
         <div>
-          <h1>Logbook</h1>
+          <h1>Health-Logbook</h1>
           <p>The household health log. Sign in to see your dashboard.</p>
         </div>
         <div className="field">

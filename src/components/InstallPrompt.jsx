@@ -25,7 +25,7 @@ export default function InstallPrompt() {
 
   return (
     <div className="card" style={{ position: 'fixed', left: 16, right: 16, bottom: 86, maxWidth: 420, margin: '0 auto', zIndex: 25 }}>
-      <p style={{ margin: 0, fontSize: 14 }}>Add Logbook to your home screen for one-tap logging.</p>
+      <p style={{ margin: 0, fontSize: 14 }}>Add Health-Logbook to your home screen for one-tap logging.</p>
       <div className="actions">
         <button className="btn ghost" onClick={dismiss}>Not now</button>
         <button className="btn" onClick={async () => { deferred.prompt(); await deferred.userChoice; dismiss() }}>Add</button>
