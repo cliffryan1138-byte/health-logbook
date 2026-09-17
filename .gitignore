@@ -1,0 +1,9 @@
+node_modules
+dist
+.vercel
+.DS_Store
+
+# Never commit real keys. The original deployment uploaded a .env with the
+# source; that key should be treated as exposed and rotated.
+.env
+.env.local
