@@ -226,8 +226,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .who .when { margin-left: 0; width: 100%; }
 }
 
-/* Sparky. He is a detailed mascot, so he only appears where there is room for
-   him to read: the auth cards at 72px, the favicon, and the installed app icon.
-   The dashboard header keeps the 34px line glyph, where a full illustration
-   would turn to mush. */
-.authcard .mark { display: block; margin-bottom: 14px; border-radius: 12px; }
+/* Sparky. The artwork already carries its own scarlet disc, so the mark sits on
+   the page directly rather than inside the accent square the line glyph used —
+   a badge inside a badge reads as a mistake. 44px in the header is the smallest
+   the dumbbells still resolve at. */
+.authcard .mark { display: block; margin-bottom: 14px; }
+.brand .mark { flex: none; display: block; }

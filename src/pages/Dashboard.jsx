@@ -6,7 +6,6 @@ import Spark from '../components/Spark'
 import QuickLog from '../components/QuickLog'
 import InstallPrompt from '../components/InstallPrompt'
 import FeedbackBox from '../components/FeedbackBox'
-import Icon from '../lib/icons'
 import {
   todayRows, sum, latest, dailySeries, glucoseByContext,
   symptomSummary, triggerMatches, fmt,
@@ -80,7 +79,7 @@ export default function Dashboard() {
     <div className="wrap">
       <header className="topbar">
         <div className="brand">
-          <span className="glyph"><Icon name="logo" /></span>
+          <img className="mark" src="/sparky.png" alt="" width="44" height="44" />
           <h1>Health-Logbook</h1>
         </div>
         <button className="signout" onClick={signOut}>Sign out</button>
