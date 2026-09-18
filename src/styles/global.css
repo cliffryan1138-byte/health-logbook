@@ -216,6 +216,26 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .authcard .glyph svg { width: 24px; height: 24px; }
 .authcard h1 { margin: 0 0 4px; font-size: 22px; }
 .authcard p { margin: 0 0 20px; color: var(--ink-soft); font-size: 14px; }
+/* "or" rule between the password form and the OAuth button. The line is drawn
+   with two flexed pseudo-elements rather than a border under the text, so it
+   stays centred whatever the label's width. */
+.oauth-sep {
+  display: flex; align-items: center; gap: 10px;
+  margin: 16px 0 12px; color: var(--ink-faint); font-size: 12.5px;
+}
+.oauth-sep::before, .oauth-sep::after {
+  content: ''; flex: 1; height: 1px; background: var(--line);
+}
+.btn-oauth {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 11px; border-radius: 10px; font-size: 15px; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  color: var(--ink); background: var(--ground);
+  border: 1px solid var(--line-strong);
+}
+.btn-oauth[disabled] { opacity: .55; cursor: default; }
+.btn-oauth svg { flex: none; }
+
 .authcard .swap {
   margin-top: 14px; text-align: center; font-size: 13.5px; color: var(--ink-soft);
 }
