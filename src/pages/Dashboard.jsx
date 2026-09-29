@@ -1,83 +1,55 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useLogs } from '../hooks/useLogs'
 import Card from '../components/Card'
-import Spark from '../components/Spark'
 import QuickLog from '../components/QuickLog'
 import InstallPrompt from '../components/InstallPrompt'
 import FeedbackBox from '../components/FeedbackBox'
-import {
-  todayRows, sum, latest, dailySeries, glucoseByContext,
-  symptomSummary, triggerMatches, fmt,
-} from '../lib/stats'
+import SymptomCalendar from '../components/SymptomCalendar'
+import TrendChart from '../components/TrendChart'
+import Logbook from './Logbook'
+import Icon from '../lib/icons'
+import { avg, sum, triggerMatches, fmt } from '../lib/stats'
+import { KINDS, toEntries, dayKey, fmtDay, fmtTime, isHeadache } from '../lib/entries'
 
-// RECOVERY NOTE: the import list and the useMemo block below are the original
-// file, recovered from the Vercel deployment. The markup after it was lost to a
-// response limit and is rebuilt against screenshots of the running app, so the
-// card order, headings and empty-state wording match what shipped.
+// Two views. Overview is the at-a-glance picture — one headline, at most four
+// tiles, a symptom calendar and ONE trend chart with tabs — replacing the stack
+// of eight cards testers found crowded. Logbook is every entry as logged, with
+// the export a doctor or lawyer asked for.
 //
-// Cards that summarise data the profile has none of (symptoms, trigger matches)
-// render nothing rather than an empty shell — same "gap, not zero" rule the
-// stats helpers follow.
+// Every figure is a count or an average over logged rows; unlogged days are
+// gaps, never zeros. Tiles only appear for things this person actually logs.
 
-const CONTEXT_LABEL = {
-  fasting: 'Fasting',
-  'post-breakfast': 'After breakfast',
-  'post-lunch': 'After lunch',
-  'post-dinner': 'After dinner',
-  random: 'Random',
+const RANGES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, 'Year']]
+const DAY = 86400000
+
+function remembered(key, fallback, allowed) {
+  try {
+    const v = JSON.parse(localStorage.getItem('lb_view') || '{}')[key]
+    return allowed.includes(v) ? v : fallback
+  } catch { return fallback }
 }
 
 export default function Dashboard() {
   const { profile, signOut } = useAuth()
-  const { meals, vitals, exercise, symptoms, loading, refresh } = useLogs(profile.id)
+  const [range, setRange] = useState(() => remembered('range', 30, RANGES.map((r) => r[0])))
+  const [view, setView] = useState(() => remembered('view', 'overview', ['overview', 'logbook']))
+  // The calendar always wants at least five weeks of context.
+  const fetchDays = Math.max(range, 35)
+  const logs = useLogs(profile.id, fetchDays)
   const [logKind, setLogKind] = useState(null)
 
-  const focus = profile.focus_areas || []
-  const watch = profile.watch_list || []
+  useEffect(() => {
+    try { localStorage.setItem('lb_view', JSON.stringify({ range, view })) } catch { /* private mode */ }
+  }, [range, view])
 
-  const s = useMemo(() => {
-    const mealsToday = todayRows(meals, 'eaten_at')
-    const weightSeries = dailySeries(vitals, 'weight_lb', 'taken_at')
-    const sleepSeries = dailySeries(vitals, 'sleep_hr', 'taken_at')
-    const lastWeight = latest(vitals, 'weight_lb', 'taken_at')
-    const lastFasting = latest(
-      vitals.filter((v) => v.glucose_context === 'fasting'),
-      'glucose_mgdl',
-      'taken_at',
-    )
-    return {
-      calToday: sum(mealsToday, 'calories'),
-      protToday: sum(mealsToday, 'protein_g'),
-      sugarToday: sum(mealsToday, 'sugar_g'),
-      fiberToday: sum(mealsToday, 'fiber_g'),
-      mealsToday,
-      weightSeries,
-      sleepSeries,
-      lastWeight,
-      lastFasting,
-      weightDelta:
-        weightSeries.length >= 2
-          ? weightSeries[weightSeries.length - 1].value - weightSeries[0].value
-          : null,
-      glucose: glucoseByContext(vitals),
-      symptoms: symptomSummary(symptoms),
-      triggers: triggerMatches(meals, watch),
-      sessionsThisWeek: exercise.filter(
-        (e) => new Date(e.done_at) >= startOfWeek(),
-      ).length,
-    }
-  }, [meals, vitals, exercise, symptoms, watch])
-
-  const today = new Date().toLocaleDateString(undefined, {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })
+  const all = useMemo(() => toEntries(logs), [logs])
+  const from = useMemo(() => { const d = new Date(Date.now() - (range - 1) * DAY); d.setHours(0, 0, 0, 0); return d }, [range])
+  const entries = useMemo(() => all.filter((e) => e.at >= from), [all, from])
 
   return (
     <div className="wrap">
-      <header className="topbar">
+      <header className="topbar screen-only">
         <div className="brand">
           <img className="mark" src="/sparky.png" alt="" width="44" height="44" />
           <h1>Health-Logbook</h1>
@@ -85,164 +57,181 @@ export default function Dashboard() {
         <button className="signout" onClick={signOut}>Sign out</button>
       </header>
 
-      <div className="grid">
-        {/* ── Profile summary ── */}
-        <div className="card wide">
-          <div className="who">
-            <h2>{profile.display_name}</h2>
-            {focus.length > 0 && <span className="focus">{focus.join(' · ')}</span>}
-            <span className="when">{today}</span>
-          </div>
-
-          <div className="stat-grid">
-            <Stat
-              label="Weight"
-              value={s.lastWeight ? fmt(s.lastWeight.weight_lb, 1) : '—'}
-              unit="lb"
-              action="log a weigh-in"
-              onAction={() => setLogKind('vitals')}
-            />
-            <Stat
-              label="Fasting glucose"
-              value={s.lastFasting ? fmt(s.lastFasting.glucose_mgdl) : '—'}
-              unit="mg/dL"
-              action="log a reading"
-              onAction={() => setLogKind('vitals')}
-            />
-            <Stat
-              label="Protein today"
-              value={fmt(s.protToday)}
-              unit="g"
-              action="today"
-              onAction={() => setLogKind('meal')}
-            />
-            <Stat
-              label="Calories today"
-              value={fmt(s.calToday)}
-              unit="kcal"
-              action="today"
-              onAction={() => setLogKind('meal')}
-            />
-          </div>
+      <div className="viewbar screen-only">
+        <div className="seg" role="tablist" aria-label="View">
+          <button role="tab" aria-selected={view === 'overview'} onClick={() => setView('overview')}>Overview</button>
+          <button role="tab" aria-selected={view === 'logbook'} onClick={() => setView('logbook')}>Logbook</button>
         </div>
-
-        {/* ── Weight trend ── */}
-        <Card icon="scale" title="Weight trend" tag="14 days">
-          <div className="big">
-            {s.lastWeight ? fmt(s.lastWeight.weight_lb, 1) : '—'}
-            <span className="unit">lb</span>
-          </div>
-          <Spark series={s.weightSeries} />
-        </Card>
-
-        {/* ── Blood glucose by context ── */}
-        <Card icon="drop" title="Blood glucose by context" tag="avg / 14d">
-          {s.glucose ? (
-            s.glucose.map((g) => (
-              <div className="ctx" key={g.context}>
-                <span className="name">{CONTEXT_LABEL[g.context] || g.context}</span>
-                <span className="n">n={g.n}</span>
-                <span className="val">{fmt(g.value)} mg/dL</span>
-              </div>
-            ))
-          ) : (
-            <div className="empty">
-              Log glucose readings with their context (fasting, after meals) to see this.
-            </div>
-          )}
-        </Card>
-
-        {/* ── Today's intake ── */}
-        <Card
-          icon="flame"
-          title="Today's intake"
-          tag={s.mealsToday.length ? `${s.mealsToday.length} logged` : 'no meals yet'}
-        >
-          {s.mealsToday.length ? (
-            <>
-              <div className="big">
-                {fmt(s.calToday)}<span className="unit">kcal</span>
-              </div>
-              <div className="ctx"><span className="name">Protein</span><span className="val">{fmt(s.protToday)} g</span></div>
-              <div className="ctx"><span className="name">Sugar</span><span className="val">{fmt(s.sugarToday)} g</span></div>
-              <div className="ctx"><span className="name">Fiber</span><span className="val">{fmt(s.fiberToday)} g</span></div>
-            </>
-          ) : (
-            <div className="empty">Nothing logged today. Snap a photo or tap Meal below.</div>
-          )}
-        </Card>
-
-        {/* ── Exercise ── */}
-        <Card icon="dumbbell" title="Exercise" tag="this week">
-          <div className="big">
-            {s.sessionsThisWeek}<span className="unit">sessions</span>
-          </div>
-          {s.sessionsThisWeek === 0 && (
-            <div className="empty">No sessions logged this week yet.</div>
-          )}
-        </Card>
-
-        {/* ── Symptoms: only when there are any ── */}
-        {s.symptoms && (
-          <Card icon="pulse" title="Symptoms" tag="14 days">
-            {s.symptoms.map((sy) => (
-              <div className="ctx" key={sy.symptom}>
-                <span className="name">{sy.symptom}</span>
-                <span className="n">×{sy.count}</span>
-                <span className="val">severity {fmt(sy.severity, 1)}</span>
-              </div>
-            ))}
-          </Card>
-        )}
-
-        {/* ── Watch-list hits: only when there are any ── */}
-        {s.triggers && (
-          <Card icon="flame" title="Watch-list foods" tag={`${s.triggers.length} in 14d`}>
-            {s.triggers.slice(0, 6).map((m) => (
-              <div className="ctx" key={m.id}>
-                <span className="name">{m.description}</span>
-                <span className="val">{(m.trigger_watch || []).join(', ')}</span>
-              </div>
-            ))}
-          </Card>
-        )}
+        <div className="seg" role="group" aria-label="Time range">
+          {RANGES.map(([v, l]) => (
+            <button key={v} aria-pressed={range === v} onClick={() => setRange(v)}>{l}</button>
+          ))}
+        </div>
       </div>
 
-      <footer className="foot">
-        <p>
-          Estimates, not measurements. Health-Logbook is a record and a pattern-finder —
-          not medical advice.
-        </p>
+      {logs.loading ? (
+        <div className="card empty">Loading your log…</div>
+      ) : view === 'logbook' ? (
+        <Logbook entries={entries} days={range} profile={profile} />
+      ) : (
+        <Overview
+          profile={profile}
+          logs={logs}
+          all={all}
+          entries={entries}
+          range={range}
+          fetchDays={fetchDays}
+          from={from}
+          onOpenLog={() => setView('logbook')}
+        />
+      )}
+
+      <footer className="foot screen-only">
+        <p>Estimates, not measurements. Health-Logbook is a record and a pattern-finder — not medical advice.</p>
         <FeedbackBox profile={profile} />
       </footer>
 
-      <QuickLog
-        profile={profile}
-        onLogged={refresh}
-        openKind={logKind}
-        onOpenChange={setLogKind}
-      />
-      <InstallPrompt />
-    </div>
-  )
-}
-
-function Stat({ label, value, unit, action, onAction }) {
-  return (
-    <div className="stat">
-      <div className="stat-label">{label}</div>
-      <div className="stat-value">
-        {value}<span className="unit">{unit}</span>
+      <div className="screen-only">
+        <QuickLog profile={profile} onLogged={logs.refresh} openKind={logKind} onOpenChange={setLogKind} />
+        <InstallPrompt />
       </div>
-      <button className="stat-link" onClick={onAction}>→ {action}</button>
     </div>
   )
 }
 
-function startOfWeek() {
-  const d = new Date()
-  const day = (d.getDay() + 6) % 7 // Monday = 0
-  d.setDate(d.getDate() - day)
-  d.setHours(0, 0, 0, 0)
-  return d
+function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenLog }) {
+  const inRange = (rows, field) => rows.filter((r) => new Date(r[field]) >= from)
+  const meals = inRange(logs.meals, 'eaten_at')
+  const vitals = inRange(logs.vitals, 'taken_at')
+  const exercise = inRange(logs.exercise, 'done_at')
+  const focus = profile.focus_areas || []
+
+  const loggedDays = new Set(entries.map((e) => dayKey(e.at)))
+  const todayK = dayKey(new Date())
+  const todayMeals = meals.filter((m) => dayKey(m.eaten_at) === todayK)
+  const strip = Array.from({ length: 14 }, (_, i) => dayKey(new Date(Date.now() - (13 - i) * DAY)))
+  const n = loggedDays.size
+
+  // Per-day totals so "calories per day" averages over days that were logged.
+  const perDay = (rows, field, key) => {
+    const m = new Map()
+    for (const r of rows) if (r[key] != null) m.set(dayKey(r[field]), (m.get(dayKey(r[field])) || 0) + Number(r[key]))
+    return [...m.values()]
+  }
+
+  const tiles = []
+  const syms = entries.filter((e) => e.kind === 'symptoms')
+  const heads = syms.filter(isHeadache)
+  if (heads.length) {
+    tiles.push({ label: 'Headache days', value: new Set(heads.map((e) => dayKey(e.at))).size, sub: `avg severity ${fmt(avg(heads.map((e) => e.raw), 'severity_1_5'), 1)} / 5` })
+  } else if (syms.length) {
+    tiles.push({ label: 'Symptom days', value: new Set(syms.map((e) => dayKey(e.at))).size, sub: `${syms.length} entries` })
+  }
+  const weights = vitals.filter((v) => v.weight_lb != null).sort((a, b) => new Date(a.taken_at) - new Date(b.taken_at))
+  if (weights.length) {
+    const last = weights[weights.length - 1], delta = weights.length > 1 ? last.weight_lb - weights[0].weight_lb : null
+    tiles.push({
+      label: 'Weight', value: fmt(last.weight_lb, 1), unit: 'lb',
+      sub: delta == null ? `logged ${fmtDay(last.taken_at)}` : `${delta < 0 ? '▼' : delta > 0 ? '▲' : ''} ${fmt(Math.abs(delta), 1)} lb since ${fmtDay(weights[0].taken_at, { month: 'short', day: 'numeric' })}`,
+    })
+  }
+  const fasting = vitals.filter((v) => v.glucose_context === 'fasting' && v.glucose_mgdl != null)
+  if (fasting.length) tiles.push({ label: 'Fasting glucose', value: fmt(avg(fasting, 'glucose_mgdl')), unit: 'mg/dL', sub: `avg of ${fasting.length} readings` })
+  const cal = perDay(meals, 'eaten_at', 'calories')
+  if (cal.length) tiles.push({ label: 'Calories / day', value: fmt(cal.reduce((a, b) => a + b, 0) / cal.length), unit: 'kcal', sub: `avg of ${cal.length} logged days` })
+  const sleep = vitals.filter((v) => v.sleep_hr != null)
+  if (sleep.length) tiles.push({ label: 'Sleep', value: fmt(avg(sleep, 'sleep_hr'), 1), unit: 'hr', sub: `avg of ${sleep.length} nights` })
+  const mins = sum(exercise, 'duration_min')
+  if (exercise.length) tiles.push({ label: 'Active', value: mins != null ? fmt(mins) : exercise.length, unit: mins != null ? 'min' : 'sessions', sub: `${exercise.length} sessions` })
+
+  // Same meal logged five times is one line with a count, not five lines.
+  const triggers = (() => {
+    const hits = triggerMatches(meals, profile.watch_list)
+    if (!hits) return null
+    const by = new Map()
+    for (const m of hits) {
+      const k = m.description.trim().toLowerCase()
+      const g = by.get(k) || { id: m.id, description: m.description, n: 0, foods: new Set() }
+      g.n += 1
+      for (const f of m.trigger_watch || []) g.foods.add(f)
+      by.set(k, g)
+    }
+    return { total: hits.length, groups: [...by.values()].sort((a, b) => b.n - a.n) }
+  })()
+  const recent = entries.slice(0, 4)
+
+  if (!all.length) {
+    return (
+      <div className="card empty-state hero-empty">
+        <img src="/sparky.png" alt="" width="120" height="120" />
+        <h2>Welcome, {profile.display_name}</h2>
+        <p>Nothing logged yet. Snap a photo of your next meal, or tap Symptom when a headache starts — Sparky does the rest.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid">
+      <div className="card hero">
+        <div className="hero-top">
+          <h2>{profile.display_name}</h2>
+          {focus.length > 0 && <span className="focus">{focus.join(' · ')}</span>}
+        </div>
+        <div className="hero-num">
+          {n}<span> of {range} days logged</span>
+        </div>
+        <div className="dots" aria-label="Last 14 days">
+          {strip.map((k) => <i key={k} className={loggedDays.has(k) ? 'on' : ''} title={k} />)}
+        </div>
+        <p className="hero-today">
+          {todayMeals.length
+            ? <>Today: {todayMeals.length} meal{todayMeals.length === 1 ? '' : 's'}{sum(todayMeals, 'calories') != null && <> · {fmt(sum(todayMeals, 'calories'))} kcal</>}</>
+            : 'Nothing logged today yet.'}
+        </p>
+      </div>
+
+      {tiles.length > 0 && (
+        <div className="tiles">
+          {tiles.slice(0, 4).map((t) => (
+            <div className="tile" key={t.label}>
+              <div className="tile-label">{t.label}</div>
+              <div className="tile-value">{t.value}{t.unit && <span className="unit">{t.unit}</span>}</div>
+              <div className="tile-sub">{t.sub}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <SymptomCalendar entries={all} days={fetchDays} range={range} />
+
+      <TrendChart logs={logs} days={range} targets={profile.targets} />
+
+      {triggers && (
+        <Card icon="flame" title="Watch-list foods" tag={`${triggers.total} meals in range`}>
+          {triggers.groups.slice(0, 5).map((g) => (
+            <div className="ctx" key={g.id}>
+              <span className="name">{g.description}</span>
+              {g.n > 1 && <span className="n">×{g.n}</span>}
+              <span className="val">{[...g.foods].join(', ')}</span>
+            </div>
+          ))}
+        </Card>
+      )}
+
+      <Card icon="pen" title="Latest entries" tag={`${entries.length} in range`}>
+        <ul className="feed">
+          {recent.map((e) => (
+            <li key={e.id}>
+              <span className={`feed-ico k-${e.kind}`}><Icon name={KINDS[e.kind].icon} /></span>
+              <div className="feed-body">
+                <div className="feed-title">{e.title}{e.stats && <span className="feed-stats"> · {e.stats}</span>}</div>
+              </div>
+              <time className="feed-time">{fmtDay(e.at, { month: 'short', day: 'numeric' })}<br />{fmtTime(e.at)}</time>
+            </li>
+          ))}
+        </ul>
+        <button type="button" className="btn ghost more" onClick={onOpenLog}>Open the full logbook — print or send it</button>
+      </Card>
+    </div>
+  )
 }

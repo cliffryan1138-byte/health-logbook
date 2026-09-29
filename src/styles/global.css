@@ -258,3 +258,174 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
    the dumbbells still resolve at. */
 .authcard .mark { display: block; margin-bottom: 14px; }
 .brand .mark { flex: none; display: block; }
+
+/* ── Overview / Logbook (2026-09 redesign) ─────────────────────────────────
+   Tester feedback: "more graphical, less crowded", and "where do I see my
+   headache log / how do I send it to a doctor or lawyer". One headline, at most
+   four tiles, one calendar, one chart with tabs; everything else lives in the
+   Logbook view.
+
+   Severity ramp (1 = mild … 5 = severe) is one hue, light to dark — navy on the
+   light theme, gold on the navy dark theme. Validated as an ordinal ramp: the
+   step nearest the surface clears 2:1 (light 2.31, dark 2.68). */
+:root {
+  --sev-1: #98acc9; --sev-2: #6f8cb5; --sev-3: #4a6b99; --sev-4: #2b4b77; --sev-5: #0a264c;
+  --cell: #ebe8e6;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --sev-1: #7a6530; --sev-2: #a0823a; --sev-3: #c69f3f; --sev-4: #e3b23c; --sev-5: #f5d68a;
+    --cell: #143056;
+  }
+}
+
+/* Grid children may shrink below their content (the chart measures its box). */
+.grid { grid-template-columns: minmax(0, 1fr); }
+.grid > * { min-width: 0; }
+.chart { min-width: 0; overflow: hidden; }
+
+.viewbar { display: flex; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-bottom: 16px; }
+.seg { display: inline-flex; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 3px; }
+.seg button {
+  border: 0; background: none; color: var(--ink-soft); font-size: 13.5px; font-weight: 600;
+  padding: 7px 14px; border-radius: 999px; cursor: pointer; white-space: nowrap;
+}
+.seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+
+.hero { padding: 22px 24px; }
+.hero-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.hero-top h2 { margin: 0; font-size: 22px; letter-spacing: -.02em; }
+.hero-num { font-size: 52px; font-weight: 800; letter-spacing: -.03em; line-height: 1.05; margin-top: 10px; }
+.hero-num span { font-size: 18px; font-weight: 600; color: var(--ink-faint); letter-spacing: 0; }
+.dots { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--cell); }
+.dots i.on { background: var(--gold); }
+.hero-today { margin: 12px 0 0; color: var(--ink-soft); font-size: 14px; }
+
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
+.tile-label { font-size: 12.5px; color: var(--ink-soft); }
+.tile-value { font-size: 26px; font-weight: 750; letter-spacing: -.02em; margin-top: 2px; }
+.tile-value .unit { font-size: 13px; font-weight: 500; color: var(--ink-faint); margin-left: 4px; }
+.tile-sub { font-size: 12px; color: var(--ink-faint); margin-top: 2px; }
+
+.chips.tight { margin-bottom: 12px; }
+
+/* symptom calendar */
+.cal-scroll { overflow-x: auto; padding-bottom: 4px; }
+.cal-wrap { display: flex; gap: 8px; width: max-content; }
+.cal-days { display: grid; grid-template-rows: repeat(7, 26px); gap: 4px; font-size: 11px; color: var(--ink-faint); }
+.cal-days span { line-height: 26px; }
+.cal { display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 26px); gap: 4px; }
+.cal .cell { width: 26px; height: 26px; border-radius: 6px; border: 0; padding: 0; background: var(--cell); cursor: pointer; }
+.cal .cell.none { background: transparent; border: 1.5px dashed var(--line-strong); }
+.cal .cell.future { visibility: hidden; }
+.cal .cell.on { outline: 2px solid var(--gold); outline-offset: 1px; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 12px; font-size: 12px; color: var(--ink-soft); }
+.legend .sw { display: inline-block; width: 12px; height: 12px; border-radius: 3px; vertical-align: -2px; margin: 0 2px; }
+.legend .sw.none { border: 1.5px dashed var(--line-strong); margin-right: 5px; }
+.legend .sw.clear { background: var(--cell); margin-right: 5px; }
+.cal-sum { margin: 12px 0 0; font-size: 14px; color: var(--ink-soft); }
+.cal-sum b { color: var(--ink); }
+.cal-pick { margin-top: 12px; padding: 10px 12px; background: var(--surface-2); border-radius: 10px; font-size: 14px; }
+.cal-pick-row { color: var(--ink-soft); margin-top: 4px; }
+
+/* trends */
+.tabs { display: flex; gap: 4px; overflow-x: auto; margin-bottom: 8px; scrollbar-width: none; }
+.tabs button {
+  flex: none; border: 0; background: none; color: var(--ink-faint); font-size: 14px; font-weight: 600;
+  padding: 6px 10px; border-radius: 8px; cursor: pointer;
+}
+.tabs button[aria-selected="true"] { color: var(--ink); background: var(--accent-soft); }
+.chart { position: relative; }
+.chart svg { display: block; max-width: 100%; touch-action: pan-y; }
+.chart .ax { font-size: 11px; fill: var(--ink-faint); }
+.chart .grid-ln { stroke: var(--line); stroke-width: 1; }
+.chart .bar { fill: var(--accent); }
+.chart .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .pt { fill: var(--accent); stroke: var(--surface); stroke-width: 2; }
+.chart .target { stroke: var(--gold); stroke-width: 2; }
+.chart .xhair { stroke: var(--ink-faint); stroke-width: 1; }
+.chart-empty { padding: 48px 0; text-align: center; }
+.tip {
+  position: absolute; transform: translate(-50%, -120%); pointer-events: none; white-space: nowrap;
+  background: var(--ink); color: var(--surface); font-size: 12.5px; padding: 5px 9px; border-radius: 8px;
+}
+.ctx-list { margin-top: 10px; }
+.as-table { margin-top: 10px; font-size: 13px; color: var(--ink-soft); }
+.as-table summary { cursor: pointer; }
+.as-table table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+.as-table td, .as-table th { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+
+/* feed */
+.feed { list-style: none; margin: 0; padding: 0; }
+.feed li { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-top: 1px solid var(--line); }
+.feed li:first-child { border-top: 0; }
+.feed-ico {
+  width: 34px; height: 34px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.feed-ico svg { width: 17px; height: 17px; }
+.feed-body { min-width: 0; flex: 1; }
+.feed-title { font-weight: 600; }
+.feed-stats { font-weight: 400; color: var(--ink-soft); }
+.feed-detail { color: var(--ink-soft); font-size: 13.5px; margin-top: 2px; overflow-wrap: anywhere; }
+.feed-late { color: var(--gold-text); font-size: 12px; margin-top: 3px; }
+.feed-time { color: var(--ink-faint); font-size: 12px; text-align: right; white-space: nowrap; }
+.day-h { margin: 18px 0 2px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); }
+.feed-card section:first-child .day-h { margin-top: 0; }
+.btn.more { width: 100%; margin-top: 12px; }
+
+/* logbook tools */
+.search {
+  width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit; color: var(--ink);
+  background: var(--ground); border: 1px solid var(--line-strong); border-radius: 10px;
+}
+.export { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.export-head { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.export-head .note { margin: 0; }
+.export .actions { flex-wrap: wrap; }
+.export .actions .btn { flex: 1 1 150px; }
+.empty-state { text-align: center; padding: 36px 20px; }
+.empty-state p { color: var(--ink-soft); max-width: 380px; margin: 12px auto 0; }
+.empty-state h2 { margin: 12px 0 0; }
+
+.print-only { display: none; }
+
+@media (max-width: 720px) {
+  .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero-num { font-size: 42px; }
+  .viewbar .seg { width: 100%; }
+  .viewbar .seg button { flex: 1; padding: 7px 6px; }
+  .cal-days { grid-template-rows: repeat(7, 22px); }
+  .cal-days span { line-height: 22px; }
+  .cal { grid-template-rows: repeat(7, 22px); }
+  .cal .cell { width: 22px; height: 22px; }
+}
+
+/* ── print: the record for a doctor or lawyer ─────────────────────────────
+   Everything on screen hides; only the numbered, verbatim record prints.
+   Chrome and Edge fill in the page numbers; Safari prints without them. */
+@media print {
+  @page { size: letter; margin: 0.6in 0.6in 0.7in;
+    @bottom-right { content: "Page " counter(page) " of " counter(pages); font: 9pt Arial, sans-serif; color: #555; } }
+  :root { color-scheme: light; }
+  body { background: #fff; color: #111; }
+  .wrap { max-width: none; padding: 0; }
+  .screen-only, .dock, .scrim { display: none !important; }
+  .print-only { display: block; }
+  .record { font: 10pt/1.4 Arial, Helvetica, sans-serif; color: #111; }
+  .record h1 { font-size: 16pt; color: #0A264C; margin: 0 0 6px; }
+  .record p { margin: 2px 0; }
+  .record .statement { border: 1px solid #bbb; background: #f4f6f9; padding: 8px 10px; margin: 10px 0; font-size: 9pt; }
+  .record .counts { margin: 6px 0 10px; padding-left: 18px; }
+  .record table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  .record thead { display: table-header-group; }
+  .record th { background: #0A264C; color: #fff; text-align: left; padding: 4px 6px; }
+  .record td { border-bottom: 1px solid #ccc; padding: 4px 6px; vertical-align: top; }
+  .record tr { break-inside: avoid; }
+  .record .rec-detail { color: #333; margin-top: 2px; }
+  .record td:nth-child(2), .record td:nth-child(3) { white-space: nowrap; }
+  .record .rec-foot { margin-top: 14px; font-size: 8.5pt; color: #555; }
+  .record th, .record .statement { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
