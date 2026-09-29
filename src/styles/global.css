@@ -429,3 +429,41 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .record .rec-foot { margin-top: 14px; font-size: 8.5pt; color: #555; }
   .record th, .record .statement { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ── add an entry: two labeled choices ────────────────────────────────────
+   Testers couldn't tell what the row of bare icons did. Now: "Take a picture"
+   (primary) or "Add manually", which opens a menu of big labeled choices. */
+.dock .manual {
+  display: flex; align-items: center; gap: 8px;
+  background: none; color: var(--ink); border: 1px solid var(--line-strong);
+  padding: 10px 18px; border-radius: 999px; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.dock .manual svg { width: 18px; height: 18px; }
+.dock .manual:hover { background: var(--accent-soft); }
+.dock .photo, .dock .manual { white-space: nowrap; }
+@media (max-width: 400px) {
+  .dock { left: 12px; right: 12px; transform: none; justify-content: center; }
+  .dock .photo, .dock .manual { padding: 10px 14px; font-size: 14px; }
+}
+
+.choose { display: grid; gap: 8px; }
+.choice {
+  display: flex; align-items: center; gap: 14px; width: 100%; text-align: left;
+  background: var(--ground); border: 1px solid var(--line); border-radius: 12px;
+  padding: 12px 14px; cursor: pointer; color: var(--ink); font: inherit;
+}
+.choice:hover { border-color: var(--accent); }
+.choice-ico {
+  width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.choice-ico svg { width: 20px; height: 20px; }
+.choice-text { display: flex; flex-direction: column; }
+.choice-text b { font-size: 15.5px; }
+.choice-text span { font-size: 13px; color: var(--ink-soft); }
+
+/* sign-in: "Forgot password?" sits under the password field */
+.authcard .forgot {
+  display: block; margin: -6px 0 6px auto; background: none; border: 0; padding: 0;
+  color: var(--gold-text); font-size: 13px; cursor: pointer;
+}
