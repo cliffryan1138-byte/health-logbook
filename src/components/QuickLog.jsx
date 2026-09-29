@@ -14,10 +14,19 @@ import Icon from '../lib/icons'
 
 const SYMPTOMS = ['Headache', 'Heartburn', 'Bloating', 'Hot flash', 'Fatigue', 'Nausea', 'Joint pain', 'Poor sleep', 'Other']
 
+const CHOICES = [
+  { kind: 'meal', icon: 'flame', label: 'Meal or drink', hint: 'What you ate, with calories if you know them' },
+  { kind: 'symptom', icon: 'pulse', label: 'Symptom', hint: 'Headache, heartburn, bloating…' },
+  { kind: 'vitals', icon: 'drop', label: 'Vitals', hint: 'Weight, blood sugar, blood pressure, sleep' },
+  { kind: 'exercise', icon: 'dumbbell', label: 'Exercise', hint: 'Walk, weights, bike…' },
+  { kind: 'talk', icon: 'mic', label: 'Talk it through', hint: 'Say it out loud and tidy it up later' },
+]
+
 const GLUCOSE_CONTEXTS = ['fasting', 'post-breakfast', 'post-lunch', 'post-dinner', 'random']
 const INTENSITIES = ['easy', 'moderate', 'hard']
 
 const SHEETS = {
+  choose: 'What are you adding?',
   meal: 'Log a meal',
   vitals: 'Log vitals',
   exercise: 'Log exercise',
@@ -68,33 +77,44 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
   }
 
   // ── photo → capture edge function, falling back to the manual meal form ──
+  // The capture function expects { kind: 'photo', image_b64, media_type,
+  // focus_areas, watch_list } and replies { meal: {...} }. Phone photos are
+  // shrunk first: a 12-megapixel shot is far past what the function and the
+  // vision model accept, and a smaller one uploads in a second on cellular.
   async function onPhoto(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    setErr(''); setAiNote(''); setBusy(true); setOpen('meal')
+    setErr(''); setAiNote('Sparky is looking at your photo…'); setBusy(true); setForm({ source: 'photo' }); setOpen('meal')
     try {
-      const b64 = await toBase64(file)
+      const image_b64 = await shrinkToJpeg(file)
       const { data, error } = await supabase.functions.invoke('capture', {
-        body: { image: b64, profile_id: profile.id },
+        body: {
+          kind: 'photo',
+          image_b64,
+          media_type: 'image/jpeg',
+          focus_areas: (profile.focus_areas || []).map((f) => String(f).toLowerCase()),
+          watch_list: profile.watch_list || [],
+        },
       })
-      if (error) throw error
+      const meal = data?.meal
+      if (error || !meal || !meal.description) throw error || new Error('no estimate')
       setForm({
-        description: data.description ?? '',
-        calories: data.calories ?? '',
-        protein_g: data.protein_g ?? '',
-        carbs_g: data.carbs_g ?? '',
-        sugar_g: data.sugar_g ?? '',
-        fiber_g: data.fiber_g ?? '',
-        fat_g: data.fat_g ?? '',
-        sodium_mg: data.sodium_mg ?? '',
-        confidence: data.confidence ?? 'low',
+        description: meal.description ?? '',
+        calories: meal.calories ?? '',
+        protein_g: meal.protein_g ?? '',
+        carbs_g: meal.carbs_g ?? '',
+        sugar_g: meal.sugar_g ?? '',
+        fiber_g: meal.fiber_g ?? '',
+        fat_g: meal.fat_g ?? '',
+        confidence: meal.confidence ?? 'low',
+        trigger_watch: meal.trigger_watch || [],
         source: 'photo',
       })
-      setAiNote('Estimated from the photo. Check the numbers before saving.')
+      setAiNote(`${meal.summary ? `${meal.summary}. ` : ''}Estimated from the photo — check the numbers, then Save.`)
     } catch {
       setForm({ source: 'manual' })
-      setAiNote('Photo estimation is unavailable right now — enter the meal manually.')
+      setAiNote('Couldn’t read the photo just now — type in what you ate instead.')
     } finally {
       setBusy(false)
     }
@@ -124,7 +144,7 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
         sodium_mg: num(form.sodium_mg),
         confidence: form.confidence || null,
         source: form.source || 'manual',
-        trigger_watch: matchTriggers(form.description, profile.watch_list),
+        trigger_watch: [...new Set([...(form.trigger_watch || []), ...matchTriggers(form.description, profile.watch_list)])],
         notes: form.notes?.trim() || null,
       })
     } else if (open === 'vitals') {
@@ -173,22 +193,33 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
 
   return (
     <>
+      {/* Two plain choices instead of a row of unlabeled icons. No `capture`
+          attribute on the input, so phones offer Take Photo or Photo Library. */}
       <div className="dock">
         <button className="photo" onClick={() => fileRef.current?.click()}>
-          <Icon name="camera" /> Photo
+          <Icon name="camera" /> Take a picture
         </button>
-        <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={onPhoto} />
-        <DockBtn icon="mic" label="Talk" onClick={() => openSheet('talk')} />
-        <DockBtn icon="flame" label="Meal" onClick={() => openSheet('meal')} />
-        <DockBtn icon="drop" label="Vitals" onClick={() => openSheet('vitals')} />
-        <DockBtn icon="dumbbell" label="Exercise" onClick={() => openSheet('exercise')} />
-        <DockBtn icon="pulse" label="Symptom" onClick={() => openSheet('symptom')} />
+        <button className="manual" onClick={() => openSheet('choose')}>
+          <Icon name="pen" /> Add manually
+        </button>
+        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
       </div>
 
       {open && (
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
             <h3>{SHEETS[open]}</h3>
+
+            {open === 'choose' && (
+              <div className="choose">
+                {CHOICES.map((c) => (
+                  <button type="button" key={c.kind} className="choice" onClick={() => openSheet(c.kind)}>
+                    <span className="choice-ico"><Icon name={c.icon} /></span>
+                    <span className="choice-text"><b>{c.label}</b><span>{c.hint}</span></span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {open === 'meal' && (
               <>
@@ -306,20 +337,14 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
 
             <div className="actions">
               <button type="button" className="btn ghost" onClick={close} disabled={busy}>Cancel</button>
-              <button type="submit" className="btn" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
+              {open !== 'choose' && (
+                <button type="submit" className="btn" disabled={busy}>{busy ? (aiNote.startsWith('Sparky') ? 'Estimating…' : 'Saving…') : 'Save'}</button>
+              )}
             </div>
           </form>
         </div>
       )}
     </>
-  )
-}
-
-function DockBtn({ icon, label, onClick }) {
-  return (
-    <button className="ic" onClick={onClick} title={label} aria-label={label}>
-      <Icon name={icon} />
-    </button>
   )
 }
 
@@ -345,11 +370,24 @@ function matchTriggers(text, watchList) {
   return watchList.filter((w) => lower.includes(String(w).toLowerCase()))
 }
 
-async function toBase64(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onload = () => resolve(String(r.result).split(',')[1])
-    r.onerror = reject
-    r.readAsDataURL(file)
-  })
+// Longest side 1568px, JPEG — the size vision models work at best, and a few
+// hundred KB instead of several MB. Returns bare base64 (no data: prefix).
+async function shrinkToJpeg(file, max = 1568) {
+  const url = URL.createObjectURL(file)
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const i = new Image()
+      i.onload = () => resolve(i)
+      i.onerror = reject
+      i.src = url
+    })
+    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
+    const c = document.createElement('canvas')
+    c.width = Math.round(img.naturalWidth * scale)
+    c.height = Math.round(img.naturalHeight * scale)
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
+    return c.toDataURL('image/jpeg', 0.85).split(',')[1]
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }

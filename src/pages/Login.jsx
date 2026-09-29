@@ -32,6 +32,7 @@ export default function Login() {
   async function submit(e) {
     e.preventDefault()
     setErr(''); setMsg('')
+    if (mode === 'forgot') return sendReset()
     if (mode === 'signup' && password !== password2) {
       setErr('Passwords don\'t match — retype them and try again.')
       return
@@ -47,6 +48,25 @@ export default function Login() {
       setMsg('Check your email to confirm your account, then sign in.')
     }
   }
+
+  // "Forgot password?" — Supabase emails a one-time link back to this origin.
+  // Opening it signs the person in with a PASSWORD_RECOVERY event, which
+  // AuthContext turns into the "Set a new password" screen. The reply is the
+  // same whether or not the address has an account, so the form can't be used
+  // to find out who is registered.
+  async function sendReset() {
+    if (!email.trim()) { setErr('Enter the email you signed up with.'); return }
+    setBusy(true)
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin,
+    })
+    setBusy(false)
+    if (error && !/rate|too many/i.test(error.message)) { setErr(error.message); return }
+    if (error) { setErr('Too many reset emails just now — wait a minute and try again.'); return }
+    setMsg('If that email has an account, a reset link is on its way. Open it on this device.')
+  }
+
+  const go = (m) => { setMode(m); setErr(''); setMsg('') }
 
   // No redirect handler is needed here. This app is a single page with no
   // router, and supabase-js exchanges the PKCE code off the URL on startup
@@ -70,19 +90,26 @@ export default function Login() {
         <img className="mark" src="/sparky.png" alt="" width="72" height="72" />
         <div>
           <h1>Health-Logbook</h1>
-          <p>The household health log. Sign in to see your dashboard.</p>
+          <p>{mode === 'forgot'
+            ? 'Enter your email and we’ll send you a link to set a new password.'
+            : 'The household health log. Sign in to see your dashboard.'}</p>
         </div>
         <div className="field">
           <label htmlFor="email">Email</label>
           <input id="email" type="email" required autoComplete="email"
             value={email} onChange={(e) => setEmail(e.target.value)} />
         </div>
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input id="password" type="password" required
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            value={password} onChange={(e) => setPassword(e.target.value)} />
-        </div>
+        {mode !== 'forgot' && (
+          <div className="field">
+            <label htmlFor="password">Password</label>
+            <input id="password" type="password" required
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+        )}
+        {mode === 'signin' && (
+          <button type="button" className="forgot" onClick={() => go('forgot')}>Forgot password?</button>
+        )}
         {mode === 'signup' && (
           <div className="field">
             <label htmlFor="password2">Confirm password</label>
@@ -94,19 +121,29 @@ export default function Login() {
         {msg && <p className="note">{msg}</p>}
         <div className="actions">
           <button className="btn" type="submit" disabled={busy}>
-            {busy ? 'Working…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+            {busy ? 'Working…' : mode === 'signin' ? 'Sign in' : mode === 'signup' ? 'Create account' : 'Send reset link'}
           </button>
         </div>
-        <div className="oauth-sep"><span>or</span></div>
-        <button className="btn-oauth" type="button" onClick={google} disabled={busy}>
-          <GoogleMark />
-          Continue with Google
-        </button>
+        {mode !== 'forgot' && (
+          <>
+            <div className="oauth-sep"><span>or</span></div>
+            <button className="btn-oauth" type="button" onClick={google} disabled={busy}>
+              <GoogleMark />
+              Continue with Google
+            </button>
+          </>
+        )}
         <div className="swap">
-          {mode === 'signin' ? 'No account yet? ' : 'Already have one? '}
-          <button type="button" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setErr(''); setMsg('') }}>
-            {mode === 'signin' ? 'Create one' : 'Sign in'}
-          </button>
+          {mode === 'forgot' ? (
+            <button type="button" onClick={() => go('signin')}>Back to sign in</button>
+          ) : (
+            <>
+              {mode === 'signin' ? 'No account yet? ' : 'Already have one? '}
+              <button type="button" onClick={() => go(mode === 'signin' ? 'signup' : 'signin')}>
+                {mode === 'signin' ? 'Create one' : 'Sign in'}
+              </button>
+            </>
+          )}
         </div>
       </form>
     </div>
