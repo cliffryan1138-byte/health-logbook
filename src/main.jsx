@@ -3,6 +3,17 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './styles/global.css'
 
+// "healthtrack.wastegate.ai." (trailing dot — a valid but unusual spelling
+// that a bookmark had picked up) is a separate origin to the browser: its
+// sign-in is stored separately, and email links sent back to it failed to
+// load for at least one tester. Move to the plain host, keeping the path and
+// the #hash so any sign-in tokens in it survive the hop.
+if (location.hostname.endsWith('.')) {
+  const u = new URL(location.href)
+  u.hostname = u.hostname.replace(/\.+$/, '')
+  location.replace(u.toString())
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />

@@ -58,7 +58,7 @@ export default function Login() {
     if (!email.trim()) { setErr('Enter the email you signed up with.'); return }
     setBusy(true)
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: window.location.origin,
+      redirectTo: window.location.origin.replace(/\.+(?=(:\d+)?$)/, ''),
     })
     setBusy(false)
     if (error && !/rate|too many/i.test(error.message)) { setErr(error.message); return }
@@ -77,7 +77,7 @@ export default function Login() {
     setErr(''); setMsg(''); setBusy(true)
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin },
+      options: { redirectTo: window.location.origin.replace(/\.+(?=(:\d+)?$)/, '') },
     })
     // On success the browser has already left for Google, so this only runs
     // when the call failed outright — most often the provider being disabled.
