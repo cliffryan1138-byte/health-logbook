@@ -26,8 +26,9 @@ export function isHeadache(e) {
   return e.kind === 'symptoms' && (HEADACHE.test(e.raw.symptom || '') || HEADACHE.test(e.raw.notes || ''))
 }
 
-// Short title + one-line detail for the feed.
-function describe(kind, r) {
+// Short title + one-line detail for the feed. Also used for the earlier
+// versions of edited entries (entry_history.old_row), which have the same shape.
+export function describe(kind, r) {
   if (kind === 'meals') {
     return {
       title: r.description || 'Meal',
@@ -71,6 +72,9 @@ export function toEntries(logs) {
         at,
         recorded,
         late: recorded ? recorded - at > LATE_MS : false,
+        // Set by the database when a row changes after it was recorded; the
+        // earlier version is kept in entry_history.
+        edited: r.edited_at ? new Date(r.edited_at) : null,
         raw: r,
         ...describe(kind, r),
       })
@@ -109,7 +113,7 @@ export function toCSV(entries) {
   const kinds = [...new Set(entries.map((e) => e.kind))]
   const fields = []
   for (const k of kinds) for (const c of COLS[k]) if (!fields.includes(c)) fields.push(c)
-  const head = ['log', 'date', 'time', ...fields, 'recorded_at']
+  const head = ['log', 'date', 'time', ...fields, 'recorded_at', 'edited_at']
   const q = (v) => {
     if (v == null) return ''
     const s = Array.isArray(v) ? v.join('; ') : String(v)
@@ -117,7 +121,7 @@ export function toCSV(entries) {
   }
   const rows = [...entries].sort((a, b) => a.at - b.at).map((e) =>
     [KINDS[e.kind].one, dayKey(e.at), fmtTime(e.at), ...fields.map((f) => e.raw[f]),
-      e.recorded ? e.recorded.toISOString() : ''].map(q).join(','))
+      e.recorded ? e.recorded.toISOString() : '', e.edited ? e.edited.toISOString() : ''].map(q).join(','))
   return [head.join(','), ...rows].join('\n')
 }
 
