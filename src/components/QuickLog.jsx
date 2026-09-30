@@ -25,6 +25,12 @@ const CHOICES = [
   { kind: 'talk', icon: 'mic', label: 'Talk it through', hint: 'Say it out loud and tidy it up later' },
 ]
 
+// One tap each, written into the entry's notes: the details a headache diary
+// for a doctor asks for, without typing.
+const HEADACHE_DETAILS = ['One side', 'Both sides', 'Behind the eyes', 'Throbbing', 'Pressure', 'Stabbing',
+  'Aura', 'Nausea', 'Light hurts', 'Noise hurts', 'Dizzy', 'Woke up with it']
+const SEVERITY_WORDS = ['', 'Mild', 'Noticeable', 'Medium', 'Bad', 'Worst ever']
+
 const GLUCOSE_CONTEXTS = ['fasting', 'post-breakfast', 'post-lunch', 'post-dinner', 'random']
 const INTENSITIES = ['easy', 'moderate', 'hard']
 
@@ -65,7 +71,7 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
 
   useEffect(() => () => { recRef.current?.stop?.() }, [])
 
-  function openSheet(kind) { setForm({}); setErr(''); setAiNote(''); setOpen(kind) }
+  function openSheet(kind) { setForm(kind === 'symptom' ? { felt_at: localNow() } : {}); setErr(''); setAiNote(''); setOpen(kind) }
   function close() { setOpen(null); setTranscript(''); setListening(false); recRef.current?.stop?.() }
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
@@ -182,12 +188,19 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
       })
     } else if (open === 'symptom') {
       if (!form.symptom) { setErr('Pick a symptom.'); return }
+      // No silent default: a guessed 3 would read as the person's own rating.
+      if (!form.severity_1_5) { setErr('Tap how bad it is, 1 to 5.'); return }
+      const felt = form.felt_at ? new Date(form.felt_at) : new Date()
+      if (Number.isNaN(felt.getTime())) { setErr('Check the start time.'); return }
+      if (felt > new Date(Date.now() + 5 * 60000)) { setErr('That start time is in the future.'); return }
+      const notes = [(form.details || []).join(', '), form.notes?.trim()].filter(Boolean).join('. ')
       save('symptoms', {
         symptom: form.symptom,
-        severity_1_5: num(form.severity_1_5) || 3,
+        severity_1_5: Number(form.severity_1_5),
         duration_hr: num(form.duration_hr),
         suspected_trigger: form.suspected_trigger?.trim() || null,
-        notes: form.notes?.trim() || null,
+        notes: notes || null,
+        felt_at: felt.toISOString(),
       })
     } else if (open === 'talk') {
       const text = transcript.trim()
@@ -338,11 +351,35 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
                     ))}
                   </div>
                 </Field>
-                <div className="row2">
-                  <Field label="Severity 1–5"><input inputMode="numeric" value={form.severity_1_5 || ''} onChange={set('severity_1_5')} placeholder="3" /></Field>
-                  <Field label="Hours"><input inputMode="decimal" value={form.duration_hr || ''} onChange={set('duration_hr')} /></Field>
-                </div>
-                <Field label="Suspected trigger"><input value={form.suspected_trigger || ''} onChange={set('suspected_trigger')} /></Field>
+                <Field label={`How bad? ${form.severity_1_5 ? `— ${SEVERITY_WORDS[form.severity_1_5]}` : '(tap one)'}`}>
+                  <div className="sev-pick" role="group" aria-label="Severity 1 to 5">
+                    {[1, 2, 3, 4, 5].map((v) => (
+                      <button type="button" key={v} aria-pressed={Number(form.severity_1_5) === v}
+                        aria-label={`${v} — ${SEVERITY_WORDS[v]}`}
+                        data-level={v}
+                        style={{ '--sev': `var(--sev-${v})` }}
+                        onClick={() => setForm((f) => ({ ...f, severity_1_5: v }))}>{v}</button>
+                    ))}
+                  </div>
+                </Field>
+                <Field label="When did it start?"><input type="datetime-local" value={form.felt_at || ''} onChange={set('felt_at')} /></Field>
+                <Field label="How long did it last? (hours)"><input inputMode="decimal" value={form.duration_hr || ''} onChange={set('duration_hr')} placeholder="Leave empty if it's still going" /></Field>
+                {/headache|migraine/i.test(form.symptom || '') && (
+                  <Field label="Anything else? (tap all that fit)">
+                    <div className="chips">
+                      {HEADACHE_DETAILS.map((d) => {
+                        const on = (form.details || []).includes(d)
+                        return (
+                          <button type="button" key={d} className="chip" aria-pressed={on}
+                            onClick={() => setForm((f) => ({ ...f, details: on ? f.details.filter((x) => x !== d) : [...(f.details || []), d] }))}>
+                            {d}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </Field>
+                )}
+                <Field label="Suspected trigger"><input value={form.suspected_trigger || ''} onChange={set('suspected_trigger')} placeholder="skipped lunch, poor sleep…" /></Field>
                 <Field label="Notes"><textarea rows={2} value={form.notes || ''} onChange={set('notes')} /></Field>
               </>
             )}
@@ -387,6 +424,13 @@ function Field({ label, children }) {
       {children}
     </label>
   )
+}
+
+// Now, formatted for a datetime-local input (local time, no seconds).
+function localNow() {
+  const d = new Date()
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 16)
 }
 
 function num(v) {
