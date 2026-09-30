@@ -88,14 +88,14 @@ Deno.serve(async (req) => {
     });
 
     if (response.stop_reason === "refusal") {
-      return json({ error: "The photo couldn't be read. Type the entries in instead." }, 422);
+      return json({ error: "That file couldn’t be read. Type the entries in instead." }, 422);
     }
     if (response.stop_reason === "max_tokens") {
       return json({ error: "That file has more entries than can be read at once. Split it into smaller PDFs and try each." }, 413);
     }
     if (!response.parsed_output) {
       console.error("read-notes: unparsed output", response.stop_reason);
-      return json({ error: "Couldn't read that photo" }, 502);
+      return json({ error: "Couldn’t read that file" }, 502);
     }
     return json(response.parsed_output);
   } catch (e) {
