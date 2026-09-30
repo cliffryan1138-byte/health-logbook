@@ -480,3 +480,24 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .draft-keep { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; font-size: 15px; }
 .draft-keep input { width: 18px; height: 18px; }
 .draft-unsure { margin: 0 0 10px; padding: 6px 10px; border-radius: 8px; background: var(--accent-soft); color: var(--gold-text); font-size: 13px; }
+
+/* ── symptom form: tap 1–5 for severity ────────────────────────────────────
+   Big targets; the picked one fills with the same severity colour the
+   calendar uses, so "3" looks the same everywhere. */
+.sev-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.sev-pick button {
+  height: 48px; border-radius: 12px; font-size: 18px; font-weight: 700; cursor: pointer;
+  background: var(--surface); color: var(--ink); border: 1.5px solid var(--line-strong);
+}
+.sev-pick button[aria-pressed="true"] { background: var(--sev); border-color: var(--sev); color: #fff; }
+/* Light fills get dark numbers (contrast checked, all >= 4.2:1 at 18px bold). */
+.sev-pick button[aria-pressed="true"][data-level="1"],
+.sev-pick button[aria-pressed="true"][data-level="2"] { color: #0A264C; }
+@media (prefers-color-scheme: dark) {
+  .sev-pick button[aria-pressed="true"][data-level="1"] { color: #fff; }
+  .sev-pick button[aria-pressed="true"][data-level="2"],
+  .sev-pick button[aria-pressed="true"][data-level="3"],
+  .sev-pick button[aria-pressed="true"][data-level="4"],
+  .sev-pick button[aria-pressed="true"][data-level="5"] { color: #0A264C; }
+}
+.field input[type="datetime-local"] { min-height: 44px; }
