@@ -28,8 +28,16 @@ const CHOICES = [
 const GLUCOSE_CONTEXTS = ['fasting', 'post-breakfast', 'post-lunch', 'post-dinner', 'random']
 const INTENSITIES = ['easy', 'moderate', 'hard']
 
+// "Take a picture" asks first: testers photographed headache notes with it and
+// got a food estimate back.
+const PICTURES = [
+  { kind: 'food', icon: 'flame', label: 'Food or drink', hint: 'Sparky guesses the calories' },
+  { kind: 'paper', icon: 'pulse', label: 'Headache notes or a PDF log', hint: 'Paper notes, or a PDF from another app — Sparky reads each headache' },
+]
+
 const SHEETS = {
   choose: 'What are you adding?',
+  picture: 'What is the picture of?',
   meal: 'Log a meal',
   vitals: 'Log vitals',
   exercise: 'Log exercise',
@@ -199,7 +207,7 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
       {/* Two plain choices instead of a row of unlabeled icons. No `capture`
           attribute on the input, so phones offer Take Photo or Photo Library. */}
       <div className="dock">
-        <button className="photo" onClick={() => fileRef.current?.click()}>
+        <button className="photo" onClick={() => openSheet('picture')}>
           <Icon name="camera" /> Take a picture
         </button>
         <button className="manual" onClick={() => openSheet('choose')}>
@@ -216,6 +224,23 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
             <h3>{SHEETS[open]}</h3>
+
+            {open === 'picture' && (
+              <div className="choose">
+                {PICTURES.map((c) => (
+                  <button
+                    type="button"
+                    key={c.kind}
+                    className="choice"
+                    // The file picker must open inside this tap, or phones block it.
+                    onClick={() => { if (c.kind === 'food') { fileRef.current?.click(); close() } else openSheet('paper') }}
+                  >
+                    <span className="choice-ico"><Icon name={c.icon} /></span>
+                    <span className="choice-text"><b>{c.label}</b><span>{c.hint}</span></span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {open === 'choose' && (
               <div className="choose">
@@ -344,7 +369,7 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
 
             <div className="actions">
               <button type="button" className="btn ghost" onClick={close} disabled={busy}>Cancel</button>
-              {open !== 'choose' && (
+              {open !== 'choose' && open !== 'picture' && (
                 <button type="submit" className="btn" disabled={busy}>{busy ? (aiNote.startsWith('Sparky') ? 'Estimating…' : 'Saving…') : 'Save'}</button>
               )}
             </div>
