@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
+import { shrinkToJpeg } from '../lib/images'
+import PaperNotes from './PaperNotes'
 
 // v1 quick-log: fast manual forms. The Photo button accepts an image and sends
 // it to the `capture` edge function (Claude API) when deployed; until then it
@@ -19,6 +21,7 @@ const CHOICES = [
   { kind: 'symptom', icon: 'pulse', label: 'Symptom', hint: 'Headache, heartburn, bloating…' },
   { kind: 'vitals', icon: 'drop', label: 'Vitals', hint: 'Weight, blood sugar, blood pressure, sleep' },
   { kind: 'exercise', icon: 'dumbbell', label: 'Exercise', hint: 'Walk, weights, bike…' },
+  { kind: 'paper', icon: 'camera', label: 'Old paper notes', hint: 'Photo of a page from your headache diary' },
   { kind: 'talk', icon: 'mic', label: 'Talk it through', hint: 'Say it out loud and tidy it up later' },
 ]
 
@@ -205,7 +208,11 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
       </div>
 
-      {open && (
+      {open === 'paper' && (
+        <PaperNotes profile={profile} onClose={close} onSaved={() => onLogged?.()} />
+      )}
+
+      {open && open !== 'paper' && (
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
             <h3>{SHEETS[open]}</h3>
@@ -368,26 +375,4 @@ function matchTriggers(text, watchList) {
   if (!text || !watchList?.length) return []
   const lower = text.toLowerCase()
   return watchList.filter((w) => lower.includes(String(w).toLowerCase()))
-}
-
-// Longest side 1568px, JPEG — the size vision models work at best, and a few
-// hundred KB instead of several MB. Returns bare base64 (no data: prefix).
-async function shrinkToJpeg(file, max = 1568) {
-  const url = URL.createObjectURL(file)
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const i = new Image()
-      i.onload = () => resolve(i)
-      i.onerror = reject
-      i.src = url
-    })
-    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight))
-    const c = document.createElement('canvas')
-    c.width = Math.round(img.naturalWidth * scale)
-    c.height = Math.round(img.naturalHeight * scale)
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height)
-    return c.toDataURL('image/jpeg', 0.85).split(',')[1]
-  } finally {
-    URL.revokeObjectURL(url)
-  }
 }
