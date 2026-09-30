@@ -21,7 +21,7 @@ const CHOICES = [
   { kind: 'symptom', icon: 'pulse', label: 'Symptom', hint: 'Headache, heartburn, bloating…' },
   { kind: 'vitals', icon: 'drop', label: 'Vitals', hint: 'Weight, blood sugar, blood pressure, sleep' },
   { kind: 'exercise', icon: 'dumbbell', label: 'Exercise', hint: 'Walk, weights, bike…' },
-  { kind: 'paper', icon: 'camera', label: 'Old paper notes', hint: 'Photo of a page from your headache diary' },
+  { kind: 'paper', icon: 'camera', label: 'Old notes or PDF log', hint: 'Photo of paper notes, or a PDF from another app' },
   { kind: 'talk', icon: 'mic', label: 'Talk it through', hint: 'Say it out loud and tidy it up later' },
 ]
 
