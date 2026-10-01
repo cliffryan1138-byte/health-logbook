@@ -89,7 +89,7 @@ export default function Login() {
       <form className="authcard" onSubmit={submit}>
         <img className="mark" src="/sparky.png" alt="" width="72" height="72" />
         <div>
-          <h1>Health-Logbook</h1>
+          <h1>Daybook</h1>
           <p>{mode === 'forgot'
             ? 'Enter your email and we’ll send you a link to set a new password.'
             : 'The household health log. Sign in to see your dashboard.'}</p>

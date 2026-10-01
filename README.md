@@ -1,11 +1,16 @@
-# Health-Logbook
+# Daybook
 
-The household health log — a Vite + React PWA on Supabase, deployed to
-`healthtrack.wastegate.ai`.
+A Vite + React PWA on Supabase, deployed to `healthtrack.wastegate.ai`.
 
 Photo, voice or manual capture of meals, vitals, exercise and symptoms; a
 14-day dashboard that summarises them. The companion `health-tracker` Claude
 skill writes to the same tables.
+
+Named for the old accounting and legal word: a record kept day by day as
+things happen. Being contemporaneous is what gives a record its weight, which
+matters because this one is headed for claims evidence (WG-PLAN-HEALTH-001).
+Renamed from **Health-Logbook** on 2026-10-01. `health-tracker` above is the
+Claude skill, not the product, and keeps its name.
 
 ## Why this repo exists
 

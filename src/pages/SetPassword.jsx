@@ -30,7 +30,7 @@ export default function SetPassword() {
         <img className="mark" src="/sparky.png" alt="" width="72" height="72" />
         <div>
           <h1>Set a new password</h1>
-          <p>Choose a new password for your Health-Logbook account.</p>
+          <p>Choose a new password for your Daybook account.</p>
         </div>
         <div className="field">
           <label htmlFor="np1">New password</label>

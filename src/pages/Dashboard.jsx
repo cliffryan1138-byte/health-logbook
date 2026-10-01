@@ -52,7 +52,7 @@ export default function Dashboard() {
       <header className="topbar screen-only">
         <div className="brand">
           <img className="mark" src="/sparky.png" alt="" width="44" height="44" />
-          <h1>Health-Logbook</h1>
+          <h1>Daybook</h1>
         </div>
         <button className="signout" onClick={signOut}>Sign out</button>
       </header>
@@ -87,7 +87,7 @@ export default function Dashboard() {
       )}
 
       <footer className="foot screen-only">
-        <p>Estimates, not measurements. Health-Logbook is a record and a pattern-finder — not medical advice.</p>
+        <p>Estimates, not measurements. Daybook is a record and a pattern-finder — not medical advice.</p>
         <FeedbackBox profile={profile} />
       </footer>
 
