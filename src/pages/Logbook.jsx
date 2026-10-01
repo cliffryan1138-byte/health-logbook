@@ -200,7 +200,7 @@ function PrintRecord({ entries, purpose, who, period, filterText }) {
           ))}
         </tbody>
       </table>
-      <p className="rec-foot">Health-Logbook · {who} · {purpose.title}</p>
+      <p className="rec-foot">Daybook · {who} · {purpose.title}</p>
     </div>
   )
 }
