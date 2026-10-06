@@ -289,7 +289,7 @@ function PrintRecord({ entries, purpose, who, period, filterText, hash, changes 
           </table>
         </>
       )}
-      <p className="rec-foot">Health-Logbook · {who} · {purpose.title} · SHA-256 {hash}</p>
+      <p className="rec-foot">Daybook · {who} · {purpose.title} · SHA-256 {hash}</p>
     </div>
   )
 }
