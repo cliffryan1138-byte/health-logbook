@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Icon from '../lib/icons'
 import {
-  KINDS, isHeadache, toCSV, download, slug, dayKey, fmtDay, fmtTime, fmtStamp,
+  KINDS, isHeadache, toCSV, download, slug, dayKey, fmtDay, fmtTime, fmtStamp, describe,
 } from '../lib/entries'
+import { sha256, logEvent, loadHistory } from '../lib/audit'
+import Activity from '../components/Activity'
 
 // Everything that was logged, as it was logged — the answer to "where do I see
 // my headache log?" — plus the file to hand a doctor or a lawyer.
@@ -11,6 +13,12 @@ import {
 // every phone and desktop browser can "Save as PDF" from the print dialog, and it
 // adds nothing to the bundle. It reproduces entries verbatim and interprets
 // nothing; the only arithmetic on it is counting.
+//
+// Every export is fingerprinted: the SHA-256 of the spreadsheet for the same
+// selection is printed on the record and logged with the export, so a printout
+// and a CSV can be matched to each other and to the log. Entries changed after
+// they were recorded are marked, and their earlier versions (and any removed
+// entries) are listed at the end of the printed record.
 
 const PURPOSES = {
   personal: {
@@ -35,8 +43,11 @@ const PURPOSES = {
       'order, without editing, omission, or summary. “Date” and “Time” are when the person reported the ' +
       'event occurred. “Recorded” is when the entry was written to the log; entries written more than ' +
       '24 hours after the event are marked “entered later”. Severity is the person’s own 1–5 rating. ' +
-      'Suspected triggers are the person’s guesses at the time. This record was generated from a ' +
-      'personal tracking app and contains no medical diagnosis or interpretation.',
+      'Suspected triggers are the person’s guesses at the time. Entries changed after they were ' +
+      'recorded are marked “edited”, and every earlier version, like every removed entry, is listed ' +
+      'under “Changes after recording”. The fingerprint is the SHA-256 of the spreadsheet (CSV) export ' +
+      'of the same entries. This record was generated from a personal tracking app and contains no ' +
+      'medical diagnosis or interpretation.',
   },
 }
 
@@ -67,18 +78,57 @@ export default function Logbook({ entries, days, profile }) {
   const period = `${fmtDay(from, { month: 'long', day: 'numeric', year: 'numeric' })} – ${fmtDay(new Date(), { month: 'long', day: 'numeric', year: 'numeric' })}`
   const base = `${slug(profile.display_name)}-${headOnly ? 'headache-log' : 'health-log'}-${dayKey(new Date())}`
 
-  const csv = () => download(`${base}.csv`, toCSV(shown))
+  // The exact spreadsheet text for this selection, and its fingerprint.
+  const csvText = useMemo(() => toCSV(shown), [shown])
+  const [fp, setFp] = useState({ for: null, hash: '' })
+  useEffect(() => {
+    let live = true
+    sha256(csvText).then((hash) => { if (live) setFp({ for: csvText, hash }) })
+    return () => { live = false }
+  }, [csvText])
+  const hash = fp.for === csvText ? fp.hash : ''
+
+  // Earlier versions of edited entries and removed entries (rare: the app never
+  // edits or deletes, but the database keeps a trail if anything ever does).
+  const [history, setHistory] = useState([])
+  useEffect(() => { loadHistory(profile.id).then(setHistory).catch(() => setHistory([])) }, [profile.id])
+  const changes = useMemo(() => {
+    const ids = new Set(shown.map((e) => e.id))
+    return history.filter((h) => {
+      if (ids.has(`${h.table_name}:${h.row_id}`)) return true
+      if (h.op !== 'delete') return false
+      const at = new Date(h.old_row[KINDS[h.table_name].time])
+      const e = { kind: h.table_name, raw: h.old_row }
+      if (at < new Date(Date.now() - (days - 1) * 86400000)) return false
+      if (headOnly) return isHeadache(e)
+      return kind === 'all' || kind === h.table_name
+    })
+  }, [history, shown, headOnly, kind, days])
+
+  const [done, setDone] = useState('')
+  const record = (event, verb) => {
+    logEvent(profile.id, event, {
+      purpose, days, filter: kind, searched: Boolean(q.trim()), count: shown.length, sha256: hash,
+    })
+    setDone(`${verb} ${shown.length} ${shown.length === 1 ? 'entry' : 'entries'} · fingerprint ${hash.slice(0, 12)}…`)
+  }
+
+  const csv = () => { download(`${base}.csv`, csvText); record('export_csv', 'Downloaded') }
   const print = () => {
     const before = document.title
     document.title = base
+    record('export_print', 'Printed')
     window.print()
     setTimeout(() => { document.title = before }, 500)
   }
   const canShare = typeof navigator !== 'undefined' && navigator.canShare &&
     navigator.canShare({ files: [new File([''], 'x.csv', { type: 'text/csv' })] })
   const share = async () => {
-    const file = new File([toCSV(shown)], `${base}.csv`, { type: 'text/csv' })
-    try { await navigator.share({ files: [file], title: PURPOSES[purpose].title }) } catch { /* cancelled */ }
+    const file = new File([csvText], `${base}.csv`, { type: 'text/csv' })
+    try {
+      await navigator.share({ files: [file], title: PURPOSES[purpose].title })
+      record('export_share', 'Shared')
+    } catch { /* cancelled */ }
   }
 
   // Group the visible slice by day for the screen view.
@@ -116,10 +166,11 @@ export default function Logbook({ entries, days, profile }) {
               ))}
             </div>
             <div className="actions">
-              <button type="button" className="btn" onClick={print} disabled={!shown.length}>Print / Save PDF</button>
-              <button type="button" className="btn ghost" onClick={csv} disabled={!shown.length}>Spreadsheet (CSV)</button>
-              {canShare && <button type="button" className="btn ghost" onClick={share} disabled={!shown.length}>Share</button>}
+              <button type="button" className="btn" onClick={print} disabled={!shown.length || !hash}>Print / Save PDF</button>
+              <button type="button" className="btn ghost" onClick={csv} disabled={!shown.length || !hash}>Spreadsheet (CSV)</button>
+              {canShare && <button type="button" className="btn ghost" onClick={share} disabled={!shown.length || !hash}>Share</button>}
             </div>
+            {done && <p className="saved-note" role="status">✓ {done}</p>}
           </div>
         </div>
 
@@ -141,6 +192,7 @@ export default function Logbook({ entries, days, profile }) {
                         <div className="feed-title">{e.title}{e.stats && <span className="feed-stats"> · {e.stats}</span>}</div>
                         {e.detail && <div className="feed-detail">{e.detail}</div>}
                         {e.late && <div className="feed-late">Entered later · {fmtStamp(e.recorded)}</div>}
+                        {e.edited && <div className="feed-late">Edited · {fmtStamp(e.edited)}</div>}
                       </div>
                       <time className="feed-time">{fmtTime(e.at)}</time>
                     </li>
@@ -155,15 +207,18 @@ export default function Logbook({ entries, days, profile }) {
             )}
           </div>
         )}
+
+        <Activity profileId={profile.id} refreshKey={done} />
       </div>
 
-      <PrintRecord entries={shown} purpose={PURPOSES[purpose]} who={profile.display_name} period={period} filterText={filterText} />
+      <PrintRecord entries={shown} purpose={PURPOSES[purpose]} who={profile.display_name} period={period}
+        filterText={filterText} hash={hash} changes={changes} />
     </>
   )
 }
 
 // The page that prints. Hidden on screen; oldest first, numbered, verbatim.
-function PrintRecord({ entries, purpose, who, period, filterText }) {
+function PrintRecord({ entries, purpose, who, period, filterText, hash, changes }) {
   const rows = [...entries].sort((a, b) => a.at - b.at)
   const days = new Set(rows.map((e) => dayKey(e.at))).size
   const sev = rows.map((e) => e.raw.severity_1_5).filter((v) => v != null)
@@ -175,6 +230,7 @@ function PrintRecord({ entries, purpose, who, period, filterText }) {
       <p><b>Period:</b> {period}</p>
       <p><b>Showing:</b> {filterText}</p>
       <p><b>Generated:</b> {fmtStamp(new Date())}</p>
+      <p><b>Fingerprint (SHA-256 of the matching CSV):</b> <span className="rec-hash">{hash}</span></p>
       <div className="statement">{purpose.statement}</div>
       <ul className="counts">
         <li>{rows.length} {rows.length === 1 ? 'entry' : 'entries'} on {days} {days === 1 ? 'day' : 'days'}</li>
@@ -195,12 +251,45 @@ function PrintRecord({ entries, purpose, who, period, filterText }) {
                 <b>{e.title}</b>{e.stats && ` · ${e.stats}`}
                 {e.detail && <div className="rec-detail">{e.detail}</div>}
               </td>
-              <td>{fmtStamp(e.recorded)}{e.late && <div><i>entered later</i></div>}</td>
+              <td>
+                {fmtStamp(e.recorded)}
+                {e.late && <div><i>entered later</i></div>}
+                {e.edited && <div><i>edited {fmtStamp(e.edited)}</i></div>}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="rec-foot">Daybook · {who} · {purpose.title}</p>
+      {changes.length > 0 && (
+        <>
+          <h2>Changes after recording</h2>
+          <p>Each row is an entry as it stood before it was edited or removed. The database copies it here
+            automatically; nobody can change or delete this list.</p>
+          <table>
+            <thead>
+              <tr><th>Changed</th><th>What happened</th><th>Log</th><th>Entry before the change</th><th>Originally recorded</th></tr>
+            </thead>
+            <tbody>
+              {changes.map((h, i) => {
+                const d = describe(h.table_name, h.old_row)
+                return (
+                  <tr key={i}>
+                    <td>{fmtStamp(new Date(h.changed_at))}</td>
+                    <td>{h.op === 'delete' ? 'Removed' : 'Edited'}</td>
+                    <td>{KINDS[h.table_name].one}</td>
+                    <td>
+                      <b>{d.title}</b>{d.stats && ` · ${d.stats}`}
+                      <div className="rec-detail">{fmtStamp(new Date(h.old_row[KINDS[h.table_name].time]))}{d.detail && ` — ${d.detail}`}</div>
+                    </td>
+                    <td>{h.old_row.created_at ? fmtStamp(new Date(h.old_row.created_at)) : ''}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </>
+      )}
+      <p className="rec-foot">Daybook · {who} · {purpose.title} · SHA-256 {hash}</p>
     </div>
   )
 }
