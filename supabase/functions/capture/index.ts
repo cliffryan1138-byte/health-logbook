@@ -6,6 +6,12 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// The project's publishable key. The legacy anon key is only a fallback for
+// the environment that predates the new keys; it goes away once it is off.
+const publishableKey = (): string =>
+  JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "{}").default ??
+    Deno.env.get("SUPABASE_ANON_KEY")!;
+
 const TRIGGERS: Record<string, string[]> = {
   gerd: ["fried", "high-fat", "tomato", "citrus", "spicy", "chocolate", "coffee", "caffeine", "alcohol", "mint", "onion", "garlic", "carbonated", "late-evening large meal"],
   gut: ["dairy", "lactose", "wheat", "beans", "lentils", "onion", "garlic", "cruciferous", "sugar alcohols", "creamy", "high-fat", "carbonation"],
@@ -23,7 +29,7 @@ Deno.serve(async (req) => {
     // Confirm the caller is a real signed-in user.
     const supa = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+      publishableKey(),
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } },
     );
     const { data: { user } } = await supa.auth.getUser();
