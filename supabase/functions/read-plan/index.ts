@@ -12,6 +12,12 @@ import { zodOutputFormat } from "npm:@anthropic-ai/sdk/helpers/zod";
 import { z } from "npm:zod";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
+// The project's publishable key. The legacy anon key is only a fallback for
+// the environment that predates the new keys; it goes away once it is off.
+const publishableKey = (): string =>
+  JSON.parse(Deno.env.get("SUPABASE_PUBLISHABLE_KEYS") ?? "{}").default ??
+    Deno.env.get("SUPABASE_ANON_KEY")!;
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -70,7 +76,7 @@ Deno.serve(async (req) => {
   try {
     const supa = createClient(
       Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
+      publishableKey(),
       { global: { headers: { Authorization: req.headers.get("Authorization")! } } },
     );
     const { data: { user } } = await supa.auth.getUser();
