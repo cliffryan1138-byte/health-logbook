@@ -59,7 +59,7 @@ cp .env.example .env    # fill in both values
 npm run dev
 ```
 
-`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are inlined at build time, so
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` are inlined at build time, so
 they must be set in the Vercel project as well as locally. A build without them
 refuses to start rather than shipping a blank app — see `src/lib/supabase.js`.
 
