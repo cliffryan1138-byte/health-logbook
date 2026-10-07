@@ -34,8 +34,15 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
-const At = z.string().nullable()
-  .describe("Local date-time YYYY-MM-DDTHH:MM when the person said when it happened; null means just now");
+// Claude's structured output allows at most 16 nullable or union-typed
+// fields in one schema, so the model answers in a leaner shape: empty strings
+// for "none", one enum value for "unknown", vitals as a list of readings.
+// toClient() turns it back into the rows the app saves, so the app's contract
+// (nulls, one column per vital) is unchanged.
+const At = z.string()
+  .describe("Local date-time YYYY-MM-DDTHH:MM when the person said when it happened; empty string means just now");
+const Text = (what: string) => z.string().describe(`${what}; empty string if none`);
+const MEASURES = ["weight_lb", "glucose_mgdl", "bp_systolic", "bp_diastolic", "heart_rate", "sleep_hr"] as const;
 
 const Draft = z.object({
   meals: z.array(z.object({
@@ -46,46 +53,43 @@ const Draft = z.object({
     sugar_g: z.number().nullable(),
     fiber_g: z.number().nullable(),
     fat_g: z.number().nullable(),
-    confidence: z.enum(["high", "medium", "low"]).nullable()
-      .describe("For estimates from a photo or description; photos are medium at best"),
+    confidence: z.enum(["high", "medium", "low"]).describe("Photos and descriptions are medium at best"),
     at: At,
   })),
   vitals: z.array(z.object({
-    weight_lb: z.number().nullable(),
-    glucose_mgdl: z.number().int().nullable(),
-    glucose_context: z.enum(["fasting", "post-breakfast", "post-lunch", "post-dinner", "random"]).nullable(),
-    bp_systolic: z.number().int().nullable(),
-    bp_diastolic: z.number().int().nullable(),
-    heart_rate: z.number().int().nullable(),
-    sleep_hr: z.number().nullable(),
+    readings: z.array(z.object({
+      measure: z.enum(MEASURES).describe("weight in lb, glucose in mg/dL, blood pressure parts, heart rate in bpm, sleep in hours"),
+      value: z.number(),
+    })).describe("Only the numbers actually given or shown"),
+    glucose_context: z.enum(["none", "fasting", "post-breakfast", "post-lunch", "post-dinner", "random"]),
     at: At,
-  })),
+  })).describe("One entry per occasion; readings taken together share an entry"),
   exercise: z.array(z.object({
     activity: z.string(),
     duration_min: z.number().int().nullable(),
-    intensity: z.enum(["easy", "moderate", "hard"]).nullable(),
+    intensity: z.enum(["unknown", "easy", "moderate", "hard"]),
     at: At,
   })),
   symptoms: z.array(z.object({
     symptom: z.string().describe("e.g. Headache, Heartburn, Fatigue"),
     severity_1_5: z.number().int().describe("The person's own 1–5 rating"),
     duration_hr: z.number().nullable(),
-    suspected_trigger: z.string().nullable(),
-    notes: z.string().nullable(),
+    suspected_trigger: Text("Their suspected trigger"),
+    notes: Text("Notes"),
     at: At,
   })),
   doses: z.array(z.object({
     name: z.string().describe("Medicine name as on their list if it matches, else as said"),
-    dose: z.string().nullable().describe("e.g. 200 mg, 2 tablets"),
-    notes: z.string().nullable(),
+    dose: Text("e.g. 200 mg, 2 tablets"),
+    notes: Text("Notes"),
     at: At,
   })),
   medications: z.array(z.object({
     name: z.string(),
-    dose: z.string().nullable(),
-    schedule: z.string().nullable(),
+    dose: Text("Strength, e.g. 50 mg"),
+    schedule: Text("How often, from the label or as said"),
     as_needed: z.boolean(),
-    reason: z.string().nullable(),
+    reason: Text("What it is for"),
   })).describe("Medicines to ADD to their list: when they ask, or from a photo of a medicine that isn't on it yet"),
 });
 
@@ -94,6 +98,32 @@ const Reply = z.object({
   drafts: Draft,
 });
 
+type Drafts = z.infer<typeof Draft>;
+const orNull = (v: string) => (v && v.trim() ? v.trim() : null);
+const INTS = new Set(["glucose_mgdl", "bp_systolic", "bp_diastolic", "heart_rate"]);
+
+// The model's lean drafts -> the shape the app saves (and has always received).
+function toClient(d: Drafts) {
+  return {
+    meals: d.meals.map((m) => ({ ...m, at: orNull(m.at) })),
+    vitals: d.vitals.map((v) => {
+      const row: Record<string, number | string | null> = Object.fromEntries(MEASURES.map((k) => [k, null]));
+      for (const r of v.readings) row[r.measure] = INTS.has(r.measure) ? Math.round(r.value) : r.value;
+      row.glucose_context = row.glucose_mgdl != null && v.glucose_context !== "none" ? v.glucose_context : null;
+      row.at = orNull(v.at);
+      return row;
+    }).filter((row) => MEASURES.some((k) => row[k] != null)),
+    exercise: d.exercise.map((e) => ({ ...e, intensity: e.intensity === "unknown" ? null : e.intensity, at: orNull(e.at) })),
+    symptoms: d.symptoms.map((s) => ({
+      ...s, suspected_trigger: orNull(s.suspected_trigger), notes: orNull(s.notes), at: orNull(s.at),
+    })),
+    doses: d.doses.map((x) => ({ name: x.name, dose: orNull(x.dose), notes: orNull(x.notes), at: orNull(x.at) })),
+    medications: d.medications.map((m) => ({
+      name: m.name, dose: orNull(m.dose), schedule: orNull(m.schedule), as_needed: m.as_needed, reason: orNull(m.reason),
+    })),
+  };
+}
+
 const SYSTEM = `You are Sparky, the helper inside Daybook, a personal health log. People talk to you by voice or text.
 
 What you do:
@@ -101,7 +131,7 @@ What you do:
 - When they tell you something worth logging, put it in drafts so they can tap Save. Say in your reply what you drafted ("I've drafted a headache at 4 out of 5 — tap Save to keep it"). Do not claim anything is saved.
 - Symptoms need their own 1–5 rating. If they haven't given one or said something clear ("worst ever" = 5, "mild" = 1), ask how bad it is and leave the symptom out of drafts until they answer.
 - Medicine doses: match the name to their medication list when it fits. Only add to the medications list when they ask to add a medicine, or when a photo shows one that isn't on it (see Photos).
-- Times: "at noon", "this morning", "an hour ago" become a local time using the current time given below. No time said = null.
+- Times: "at noon", "this morning", "an hour ago" become a local time using the current time given below. No time said = empty string.
 - Earlier turns may already have produced drafts. Only draft what the latest message adds.
 
 Photos. People photograph anything; work out what it shows and draft what fits. Say in one short sentence what you see.
@@ -223,7 +253,7 @@ Deno.serve(async (req) => {
       console.error("sparky-chat: unparsed output", response.stop_reason);
       return json({ error: "Sparky lost the thread. Try again." }, 502);
     }
-    return json(response.parsed_output);
+    return json({ reply: response.parsed_output.reply, drafts: toClient(response.parsed_output.drafts) });
   } catch (e) {
     if (e instanceof Anthropic.RateLimitError) return json({ error: "Sparky is busy right now. Try again in a minute." }, 429);
     if (e instanceof Anthropic.APIConnectionTimeoutError) return json({ error: "That took too long. Try again." }, 504);
