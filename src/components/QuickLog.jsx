@@ -1,13 +1,10 @@
 import { useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
-import { shrinkToJpeg } from '../lib/images'
 import PaperNotes from './PaperNotes'
 import { DoseSheet } from './Medications'
 
-// v1 quick-log: fast manual forms. The Photo button accepts an image and sends
-// it to the `capture` edge function (Claude API) when deployed; until then it
-// falls back to the manual meal form with a note.
+// v1 quick-log: fast manual forms, and the dock that opens them.
 //
 // RECOVERY NOTE: the header above, the SYMPTOMS list and the component
 // signature are the original file, recovered from the Vercel deployment. The
@@ -18,7 +15,12 @@ import { DoseSheet } from './Medications'
 // Voice moved to SparkyChat (2026-10-07): "Talk it through" used to save the
 // raw transcript as a meal; now the mic opens a conversation with Sparky, who
 // drafts proper entries of any kind.
-
+//
+// Pictures followed the same day: "Take a picture" opens the camera (or photo
+// library) and hands the photo to Sparky, who works out what it is — a meal, a
+// medicine label, a meter reading, a rash, paper notes — and drafts what fits.
+// Testers couldn't photograph their medicine when the camera only knew food.
+// Old notes and PDF logs keep their own importer under Add manually.
 const SYMPTOMS = ['Headache', 'Heartburn', 'Bloating', 'Hot flash', 'Fatigue', 'Nausea', 'Joint pain', 'Poor sleep', 'Other']
 
 const CHOICES = [
@@ -40,27 +42,18 @@ const SEVERITY_WORDS = ['', 'Mild', 'Noticeable', 'Medium', 'Bad', 'Worst ever']
 const GLUCOSE_CONTEXTS = ['fasting', 'post-breakfast', 'post-lunch', 'post-dinner', 'random']
 const INTENSITIES = ['easy', 'moderate', 'hard']
 
-// "Take a picture" asks first: testers photographed headache notes with it and
-// got a food estimate back.
-const PICTURES = [
-  { kind: 'food', icon: 'flame', label: 'Food or drink', hint: 'Sparky guesses the calories' },
-  { kind: 'paper', icon: 'pulse', label: 'Headache notes or a PDF log', hint: 'Paper notes, or a PDF from another app — Sparky reads each headache' },
-]
-
 const SHEETS = {
   choose: 'What are you adding?',
-  picture: 'What is the picture of?',
   meal: 'Log a meal',
   vitals: 'Log vitals',
   exercise: 'Log exercise',
   symptom: 'Log a symptom',
 }
 
-export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpenChange, onTalk }) {
+export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpenChange, onTalk, onPicture }) {
   const [openInner, setOpenInner] = useState(null) // 'meal' | 'vitals' | 'exercise' | 'symptom' | 'dose'
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
-  const [aiNote, setAiNote] = useState('')
   const [form, setForm] = useState({})
   const fileRef = useRef(null)
 
@@ -69,52 +62,16 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   const open = openKind !== undefined ? openKind : openInner
   const setOpen = (k) => { setOpenInner(k); onOpenChange?.(k) }
 
-  function openSheet(kind) { setForm(kind === 'symptom' ? { felt_at: localNow() } : {}); setErr(''); setAiNote(''); setOpen(kind) }
+  function openSheet(kind) { setForm(kind === 'symptom' ? { felt_at: localNow() } : {}); setErr(''); setOpen(kind) }
   function close() { setOpen(null) }
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
-  // ── photo → capture edge function, falling back to the manual meal form ──
-  // The capture function expects { kind: 'photo', image_b64, media_type,
-  // focus_areas, watch_list } and replies { meal: {...} }. Phone photos are
-  // shrunk first: a 12-megapixel shot is far past what the function and the
-  // vision model accept, and a smaller one uploads in a second on cellular.
-  async function onPhoto(e) {
+  // Any photo goes to Sparky. No `capture` attribute on the input, so phones
+  // offer Take Photo or Photo Library.
+  function onPhoto(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file) return
-    setErr(''); setAiNote('Sparky is looking at your photo…'); setBusy(true); setForm({ source: 'photo' }); setOpen('meal')
-    try {
-      const image_b64 = await shrinkToJpeg(file)
-      const { data, error } = await supabase.functions.invoke('capture', {
-        body: {
-          kind: 'photo',
-          image_b64,
-          media_type: 'image/jpeg',
-          focus_areas: (profile.focus_areas || []).map((f) => String(f).toLowerCase()),
-          watch_list: profile.watch_list || [],
-        },
-      })
-      const meal = data?.meal
-      if (error || !meal || !meal.description) throw error || new Error('no estimate')
-      setForm({
-        description: meal.description ?? '',
-        calories: meal.calories ?? '',
-        protein_g: meal.protein_g ?? '',
-        carbs_g: meal.carbs_g ?? '',
-        sugar_g: meal.sugar_g ?? '',
-        fiber_g: meal.fiber_g ?? '',
-        fat_g: meal.fat_g ?? '',
-        confidence: meal.confidence ?? 'low',
-        trigger_watch: meal.trigger_watch || [],
-        source: 'photo',
-      })
-      setAiNote(`${meal.summary ? `${meal.summary}. ` : ''}Estimated from the photo — check the numbers, then Save.`)
-    } catch {
-      setForm({ source: 'manual' })
-      setAiNote('Couldn’t read the photo just now — type in what you ate instead.')
-    } finally {
-      setBusy(false)
-    }
+    if (file) onPicture?.(file)
   }
 
   async function save(table, row) {
@@ -187,10 +144,10 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
 
   return (
     <>
-      {/* Two plain choices instead of a row of unlabeled icons. No `capture`
-          attribute on the input, so phones offer Take Photo or Photo Library. */}
+      {/* Two plain choices instead of a row of unlabeled icons, plus the mic. */}
       <div className="dock">
-        <button className="photo" onClick={() => openSheet('picture')}>
+        {/* The file picker must open inside this tap, or phones block it. */}
+        <button className="photo" onClick={() => fileRef.current?.click()}>
           <Icon name="camera" /> <span className="long">Take a picture</span><span className="short">Picture</span>
         </button>
         <button className="manual" onClick={() => openSheet('choose')}>
@@ -214,23 +171,6 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
             <h3>{SHEETS[open]}</h3>
-
-            {open === 'picture' && (
-              <div className="choose">
-                {PICTURES.map((c) => (
-                  <button
-                    type="button"
-                    key={c.kind}
-                    className="choice"
-                    // The file picker must open inside this tap, or phones block it.
-                    onClick={() => { if (c.kind === 'food') { fileRef.current?.click(); close() } else openSheet('paper') }}
-                  >
-                    <span className="choice-ico"><Icon name={c.icon} /></span>
-                    <span className="choice-text"><b>{c.label}</b><span>{c.hint}</span></span>
-                  </button>
-                ))}
-              </div>
-            )}
 
             {open === 'choose' && (
               <div className="choose">
@@ -363,13 +303,12 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
               </>
             )}
 
-            {aiNote && <p className="note">{aiNote}</p>}
             {err && <p className="err">{err}</p>}
 
             <div className="actions">
               <button type="button" className="btn ghost" onClick={close} disabled={busy}>Cancel</button>
-              {open !== 'choose' && open !== 'picture' && (
-                <button type="submit" className="btn" disabled={busy}>{busy ? (aiNote.startsWith('Sparky') ? 'Estimating…' : 'Saving…') : 'Save'}</button>
+              {open !== 'choose' && (
+                <button type="submit" className="btn" disabled={busy}>{busy ? 'Saving…' : 'Save'}</button>
               )}
             </div>
           </form>

@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
 import { describe } from '../lib/entries'
 import { addMed, logDose, matchMed, medLine } from '../lib/meds'
+import { shrinkToJpeg } from '../lib/images'
 
 // Talk or type to Sparky. Testers asked for a microphone to speak back and
 // forth, and a chat. Both are this one sheet:
@@ -13,6 +14,12 @@ import { addMed, logDose, matchMed, medLine } from '../lib/meds'
 //   * Ask about your log ("how many headaches this month?"), or tell Sparky
 //     what happened ("took two Advil at noon"). Sparky drafts the entry; you
 //     tap Save. Nothing is written without that tap.
+//
+// Photos: "Take a picture" opens this sheet with the photo already sent, and
+// the camera button here sends more. Sparky works out what each photo shows —
+// a meal, a medicine label, a meter, a rash, paper notes — and drafts what
+// fits. Photos are shrunk on the phone and never stored; the entries you save
+// are the record.
 //
 // The conversation lives only in this sheet. Closing it clears it; the record
 // is what you saved. Speech uses the browser's own recognition and voice
@@ -38,7 +45,7 @@ function localClock() {
 }
 
 // Turn the model's drafts into one flat list of { kind, row, title, stats }.
-function flatten(drafts) {
+function flatten(drafts, photo) {
   const out = []
   for (const kind of Object.keys(TABLE)) {
     for (const row of drafts?.[kind] || []) {
@@ -46,7 +53,7 @@ function flatten(drafts) {
         out.push({ kind, row, title: `Add ${row.name} to your list`, stats: medLine(row) })
       } else {
         const d = describe(kind === 'doses' ? 'med_doses' : kind, row)
-        out.push({ kind, row, title: d.title, stats: d.stats })
+        out.push({ kind, row, photo, title: d.title, stats: d.stats })
       }
     }
   }
@@ -55,7 +62,7 @@ function flatten(drafts) {
 
 const LABEL = { meals: 'Meal', vitals: 'Vitals', exercise: 'Exercise', symptoms: 'Symptom', doses: 'Medicine', medications: 'Medication list' }
 
-export default function SparkyChat({ profile, meds, onLogged, onClose, listenFirst }) {
+export default function SparkyChat({ profile, meds, onLogged, onClose, listenFirst, firstPhoto }) {
   const [msgs, setMsgs] = useState([]) // { role, text, drafts?: [{..., saved}] }
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -68,6 +75,8 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
   const muteRef = useRef(mute)
   const msgsRef = useRef(msgs)
   const endRef = useRef(null)
+  const camRef = useRef(null)
+  const sentFirst = useRef(false)
 
   msgsRef.current = msgs
   handsRef.current = handsFree
@@ -76,7 +85,9 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }) }, [msgs, busy])
   useEffect(() => { try { localStorage.setItem('lb_sparky_mute', mute ? '1' : '0') } catch { /* private mode */ } }, [mute])
   useEffect(() => {
-    if (listenFirst) startVoice()
+    // Once only: React's development mode runs mount effects twice.
+    if (firstPhoto && !sentFirst.current) { sentFirst.current = true; sendPhoto(firstPhoto) }
+    else if (listenFirst) startVoice()
     return () => { recRef.current?.abort?.(); if (TTS) speechSynthesis.cancel() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -139,23 +150,43 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
     startVoice()
   }
 
-  async function send(said, spoken = false) {
+  // A photo, with whatever is typed in the box as its caption.
+  async function sendPhoto(file) {
+    if (!file || busy) return
+    setErr('')
+    let image
+    try { image = await shrinkToJpeg(file) } catch {
+      setErr('Couldn’t open that picture. Try another, or take a new one.')
+      return
+    }
+    send(undefined, false, image)
+  }
+
+  async function send(said, spoken = false, image = null) {
     const line = (said ?? text).trim()
-    if (!line || busy) return
+    if ((!line && !image) || busy) return
     setText(''); setErr('')
-    const next = [...msgsRef.current, { role: 'user', text: line }]
+    const next = [...msgsRef.current, { role: 'user', text: line, image }]
     setMsgs(next)
     setBusy(true)
     try {
+      // The function only shows the model the two newest photos; sending older
+      // ones would just slow the upload, so they go as text.
+      const recent = next.map((m, i) => (m.image ? i : -1)).filter((i) => i >= 0).slice(-2)
       const { data, error } = await supabase.functions.invoke('sparky-chat', {
-        body: { messages: next.map(({ role, text: t }) => ({ role, text: t })), now: localClock() },
+        body: {
+          messages: next.map(({ role, text: t, image: img }, i) => (
+            img && recent.includes(i) ? { role, text: t, image_b64: img } : { role, text: img && !t ? '[photo shared earlier]' : t }
+          )),
+          now: localClock(),
+        },
       })
       if (error || !data?.reply) {
         let msg = ''
         try { msg = (await error?.context?.json?.())?.error } catch { /* not JSON */ }
         throw new Error(msg || data?.error || 'Sparky couldn’t answer just now. Try again.')
       }
-      setMsgs((m) => [...m, { role: 'assistant', text: data.reply, drafts: flatten(data.drafts) }])
+      setMsgs((m) => [...m, { role: 'assistant', text: data.reply, drafts: flatten(data.drafts, Boolean(image)) }])
       if (spoken && handsRef.current) speak(data.reply, () => { if (handsRef.current) listen() })
       else if (spoken) speak(data.reply)
     } catch (e) {
@@ -183,7 +214,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
         if (item.kind === 'meals') {
           const lower = row.description.toLowerCase()
           Object.assign(row, {
-            eaten_at: when(r.at), source: 'voice', confidence: 'low',
+            eaten_at: when(r.at), source: item.photo ? 'photo' : 'voice', confidence: row.confidence || 'low',
             trigger_watch: (profile.watch_list || []).filter((w) => lower.includes(String(w).toLowerCase())),
           })
         }
@@ -224,14 +255,16 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
         <div className="chat-log" aria-live="polite">
           {msgs.length === 0 && (
             <div className="chat-hello">
-              <p>Hi {profile.display_name}. Ask me about your log, or tell me what happened —
-                “I took two Advil at noon” or “headache, about a 4, started an hour ago.”</p>
-              <p className="note">Tap the mic to talk. I draft entries; nothing is saved until you tap Save. I’m not a doctor.</p>
+              <p>Hi {profile.display_name}. Ask me about your log, tell me what happened —
+                “I took two Advil at noon” or “headache, about a 4, started an hour ago” — or show me a picture:
+                your plate, a medicine label, a blood-pressure screen.</p>
+              <p className="note">Tap the mic to talk, or the camera for a picture. I draft entries; nothing is saved until you tap Save. I’m not a doctor.</p>
             </div>
           )}
           {msgs.map((m, i) => (
-            <div key={i} className={`bubble ${m.role}`}>
-              <p>{m.text}</p>
+            <div key={i} className={`bubble ${m.role}${m.image ? ' has-photo' : ''}`}>
+              {m.image && <img className="bubble-photo" src={`data:image/jpeg;base64,${m.image}`} alt="Your photo" />}
+              {m.text && <p>{m.text}</p>}
               {m.drafts?.length > 0 && (
                 <ul className="drafts">
                   {m.drafts.map((d, j) => (
@@ -250,13 +283,19 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
               )}
             </div>
           ))}
-          {busy && <div className="bubble assistant thinking"><p>Sparky is thinking…</p></div>}
+          {busy && <div className="bubble assistant thinking"><p>{msgs[msgs.length - 1]?.image ? 'Sparky is looking at your picture…' : 'Sparky is thinking…'}</p></div>}
           <div ref={endRef} />
         </div>
 
         {err && <p className="err">{err}</p>}
 
         <form className="chat-bar" onSubmit={(e) => { e.preventDefault(); send() }}>
+          <input ref={camRef} type="file" accept="image/*" hidden
+            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; sendPhoto(f) }} />
+          <button type="button" className="cam" aria-label="Send a picture" title="Send a picture"
+            disabled={busy} onClick={() => camRef.current?.click()}>
+            <Icon name="camera" />
+          </button>
           <button type="button" className={`mic${listening ? ' on' : ''}${handsFree && !listening ? ' wait' : ''}`}
             aria-pressed={listening || handsFree} aria-label={listening || handsFree ? 'Stop talking' : 'Talk to Sparky'} onClick={toggleMic}>
             <Icon name="mic" />

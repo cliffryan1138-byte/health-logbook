@@ -44,7 +44,8 @@ export default function Dashboard() {
   const fetchDays = Math.max(range, 35)
   const logs = useLogs(profile.id, fetchDays)
   const [logKind, setLogKind] = useState(null)
-  // null = closed; 'type' or 'talk' (talk starts the mic straight away).
+  // null = closed; 'type', 'talk' (starts the mic straight away), or
+  // { photo: File } from "Take a picture" (Sparky reads it straight away).
   const [chat, setChat] = useState(null)
   // Bumped when a workout is saved, so Past workouts reloads.
   const [workoutsSaved, setWorkoutsSaved] = useState(0)
@@ -111,10 +112,10 @@ export default function Dashboard() {
 
       <div className="screen-only">
         <QuickLog profile={profile} meds={logs.medications} onLogged={logs.refresh} openKind={logKind} onOpenChange={setLogKind}
-          onTalk={() => setChat('talk')} />
+          onTalk={() => setChat('talk')} onPicture={(photo) => setChat({ photo })} />
         {chat && (
           <SparkyChat profile={profile} meds={logs.medications} onLogged={logs.refresh}
-            listenFirst={chat === 'talk'} onClose={() => setChat(null)} />
+            listenFirst={chat === 'talk'} firstPhoto={chat.photo} onClose={() => setChat(null)} />
         )}
         <InstallPrompt />
       </div>

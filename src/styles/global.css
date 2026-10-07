@@ -671,3 +671,14 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chat-bar svg { width: 20px; height: 20px; }
 @keyframes listen { 50% { box-shadow: 0 0 0 4px var(--accent-soft), 0 0 0 10px var(--gold); } }
 @media (prefers-reduced-motion: reduce) { .chat-bar .mic.on { animation: none; } }
+
+/* ── Pictures in the Sparky chat ─────────────────────────────────────────── */
+.bubble.has-photo { padding: 6px; }
+.bubble.has-photo p { padding: 4px 7px 2px; }
+.bubble-photo { display: block; max-width: 100%; max-height: 220px; border-radius: 12px; object-fit: cover; }
+.chat-bar .cam {
+  flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
+  background: var(--surface); color: var(--ink); border: 1.5px solid var(--line-strong);
+}
+.chat-bar .cam[disabled] { opacity: .45; cursor: default; }
+.chat-bar .cam svg { width: 20px; height: 20px; }
