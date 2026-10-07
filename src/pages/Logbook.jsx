@@ -5,6 +5,7 @@ import {
 } from '../lib/entries'
 import { sha256, logEvent, loadHistory } from '../lib/audit'
 import Activity from '../components/Activity'
+import { medLine } from '../lib/meds'
 
 // Everything that was logged, as it was logged — the answer to "where do I see
 // my headache log?" — plus the file to hand a doctor or a lawyer.
@@ -51,7 +52,7 @@ const PURPOSES = {
   },
 }
 
-export default function Logbook({ entries, days, profile }) {
+export default function Logbook({ entries, days, profile, medications = [] }) {
   const hasHead = entries.some(isHeadache)
   const kinds = Object.keys(KINDS).filter((k) => entries.some((e) => e.kind === k))
   const [kind, setKind] = useState('all')
@@ -94,7 +95,9 @@ export default function Logbook({ entries, days, profile }) {
   useEffect(() => { loadHistory(profile.id).then(setHistory).catch(() => setHistory([])) }, [profile.id])
   const changes = useMemo(() => {
     const ids = new Set(shown.map((e) => e.id))
+    // Changes to the medication list itself show in its own section, not here.
     return history.filter((h) => {
+      if (!KINDS[h.table_name]) return false
       if (ids.has(`${h.table_name}:${h.row_id}`)) return true
       if (h.op !== 'delete') return false
       const at = new Date(h.old_row[KINDS[h.table_name].time])
@@ -212,17 +215,20 @@ export default function Logbook({ entries, days, profile }) {
       </div>
 
       <PrintRecord entries={shown} purpose={PURPOSES[purpose]} who={profile.display_name} period={period}
-        filterText={filterText} hash={hash} changes={changes} />
+        filterText={filterText} hash={hash} changes={changes} medications={medications} from={from} />
     </>
   )
 }
 
 // The page that prints. Hidden on screen; oldest first, numbered, verbatim.
-function PrintRecord({ entries, purpose, who, period, filterText, hash, changes }) {
+function PrintRecord({ entries, purpose, who, period, filterText, hash, changes, medications, from }) {
   const rows = [...entries].sort((a, b) => a.at - b.at)
   const days = new Set(rows.map((e) => dayKey(e.at))).size
   const sev = rows.map((e) => e.raw.severity_1_5).filter((v) => v != null)
   const tally = [1, 2, 3, 4, 5].map((s) => [s, sev.filter((v) => v === s).length]).filter(([, c]) => c)
+  // Medicines on the list at any point in the period, as listed.
+  const fromDay = dayKey(from)
+  const meds = medications.filter((m) => !m.stopped_on || m.stopped_on >= fromDay)
   return (
     <div className="print-only record">
       <h1>{purpose.title}</h1>
@@ -236,6 +242,25 @@ function PrintRecord({ entries, purpose, who, period, filterText, hash, changes 
         <li>{rows.length} {rows.length === 1 ? 'entry' : 'entries'} on {days} {days === 1 ? 'day' : 'days'}</li>
         {tally.length > 0 && <li>Severity ratings: {tally.map(([s, c]) => `${s} (${c}×)`).join(', ')}</li>}
       </ul>
+      {meds.length > 0 && (
+        <>
+          <h2>Medications during this period</h2>
+          <table>
+            <thead><tr><th>Medicine</th><th>As listed</th><th>Started</th><th>Stopped</th></tr></thead>
+            <tbody>
+              {meds.map((m) => (
+                <tr key={m.id}>
+                  <td><b>{m.name}</b></td>
+                  <td>{medLine(m)}{m.notes && <div className="rec-detail">{m.notes}</div>}</td>
+                  <td>{m.started_on || ''}</td>
+                  <td>{m.stopped_on || ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <h2>Entries</h2>
+        </>
+      )}
       <table>
         <thead>
           <tr><th>#</th><th>Date</th><th>Time</th><th>Log</th><th>Entry</th><th>Recorded</th></tr>

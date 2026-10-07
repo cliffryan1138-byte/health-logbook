@@ -8,14 +8,20 @@ import FeedbackBox from '../components/FeedbackBox'
 import SymptomCalendar from '../components/SymptomCalendar'
 import TrendChart from '../components/TrendChart'
 import Logbook from './Logbook'
+import Workouts from './Workouts'
+import WorkoutHistory from '../components/WorkoutHistory'
+import Medications from '../components/Medications'
+import SparkyChat from '../components/SparkyChat'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
 import { KINDS, toEntries, dayKey, fmtDay, fmtTime, isHeadache } from '../lib/entries'
 
-// Two views. Overview is the at-a-glance picture — one headline, at most four
-// tiles, a symptom calendar and ONE trend chart with tabs — replacing the stack
-// of eight cards testers found crowded. Logbook is every entry as logged, with
-// the export a doctor or lawyer asked for.
+// Three views. Overview is the at-a-glance picture — one headline, at most four
+// tiles, medications, a symptom calendar and ONE trend chart with tabs —
+// replacing the stack of eight cards testers found crowded. Workouts is the
+// training plan and past sessions (brought back from Sparky Fit, 2026-10-07).
+// Logbook is every entry as logged, with the export a doctor or lawyer asked
+// for. Sparky, by voice or text, is one tap away on the dock in every view.
 //
 // Every figure is a count or an average over logged rows; unlogged days are
 // gaps, never zeros. Tiles only appear for things this person actually logs.
@@ -33,11 +39,15 @@ function remembered(key, fallback, allowed) {
 export default function Dashboard() {
   const { profile, signOut } = useAuth()
   const [range, setRange] = useState(() => remembered('range', 30, RANGES.map((r) => r[0])))
-  const [view, setView] = useState(() => remembered('view', 'overview', ['overview', 'logbook']))
+  const [view, setView] = useState(() => remembered('view', 'overview', ['overview', 'workouts', 'logbook']))
   // The calendar always wants at least five weeks of context.
   const fetchDays = Math.max(range, 35)
   const logs = useLogs(profile.id, fetchDays)
   const [logKind, setLogKind] = useState(null)
+  // null = closed; 'type' or 'talk' (talk starts the mic straight away).
+  const [chat, setChat] = useState(null)
+  // Bumped when a workout is saved, so Past workouts reloads.
+  const [workoutsSaved, setWorkoutsSaved] = useState(0)
 
   useEffect(() => {
     try { localStorage.setItem('lb_view', JSON.stringify({ range, view })) } catch { /* private mode */ }
@@ -60,19 +70,27 @@ export default function Dashboard() {
       <div className="viewbar screen-only">
         <div className="seg" role="tablist" aria-label="View">
           <button role="tab" aria-selected={view === 'overview'} onClick={() => setView('overview')}>Overview</button>
+          <button role="tab" aria-selected={view === 'workouts'} onClick={() => setView('workouts')}>Workouts</button>
           <button role="tab" aria-selected={view === 'logbook'} onClick={() => setView('logbook')}>Logbook</button>
         </div>
-        <div className="seg" role="group" aria-label="Time range">
-          {RANGES.map(([v, l]) => (
-            <button key={v} aria-pressed={range === v} onClick={() => setRange(v)}>{l}</button>
-          ))}
-        </div>
+        {view !== 'workouts' && (
+          <div className="seg" role="group" aria-label="Time range">
+            {RANGES.map(([v, l]) => (
+              <button key={v} aria-pressed={range === v} onClick={() => setRange(v)}>{l}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {logs.loading ? (
         <div className="card empty">Loading your log…</div>
+      ) : view === 'workouts' ? (
+        <div className="grid">
+          <Workouts profile={profile} onLogged={() => { logs.refresh(); setWorkoutsSaved((n) => n + 1) }} />
+          <WorkoutHistory profile={profile} key={workoutsSaved} />
+        </div>
       ) : view === 'logbook' ? (
-        <Logbook entries={entries} days={range} profile={profile} />
+        <Logbook entries={entries} days={range} profile={profile} medications={logs.medications} />
       ) : (
         <Overview
           profile={profile}
@@ -92,7 +110,12 @@ export default function Dashboard() {
       </footer>
 
       <div className="screen-only">
-        <QuickLog profile={profile} onLogged={logs.refresh} openKind={logKind} onOpenChange={setLogKind} />
+        <QuickLog profile={profile} meds={logs.medications} onLogged={logs.refresh} openKind={logKind} onOpenChange={setLogKind}
+          onTalk={() => setChat('talk')} />
+        {chat && (
+          <SparkyChat profile={profile} meds={logs.medications} onLogged={logs.refresh}
+            listenFirst={chat === 'talk'} onClose={() => setChat(null)} />
+        )}
         <InstallPrompt />
       </div>
     </div>
@@ -160,12 +183,17 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
   })()
   const recent = entries.slice(0, 4)
 
+  const meds = <Medications profile={profile} meds={logs.medications} doses={logs.med_doses} onChanged={logs.refresh} />
+
   if (!all.length) {
     return (
-      <div className="card empty-state hero-empty">
-        <img src="/sparky.png" alt="" width="120" height="120" />
-        <h2>Welcome, {profile.display_name}</h2>
-        <p>Nothing logged yet. Snap a photo of your next meal, or tap Symptom when a headache starts — Sparky does the rest.</p>
+      <div className="grid">
+        <div className="card empty-state hero-empty">
+          <img src="/sparky.png" alt="" width="120" height="120" />
+          <h2>Welcome, {profile.display_name}</h2>
+          <p>Nothing logged yet. Snap a photo of your next meal, tap the mic to tell Sparky how you feel, or add the medicines you take below.</p>
+        </div>
+        {meds}
       </div>
     )
   }
@@ -201,6 +229,8 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
           ))}
         </div>
       )}
+
+      {meds}
 
       <SymptomCalendar entries={all} days={fetchDays} range={range} />
 
