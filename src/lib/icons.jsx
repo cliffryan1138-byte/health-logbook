@@ -19,6 +19,19 @@ const P = {
     </>
   ),
   pen: <path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z" />,
+  pill: (
+    <>
+      <path d="M10.5 20.5a5 5 0 0 1-7-7l6-6a5 5 0 0 1 7 7z" />
+      <path d="M8.5 8.5l7 7" />
+    </>
+  ),
+  send: <path d="M22 2L11 13M22 2l-7 20-4-9-9-4z" />,
+  speaker: (
+    <>
+      <path d="M11 5L6 9H2v6h4l5 4z" />
+      <path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a10 10 0 0 1 0 14" />
+    </>
+  ),
 }
 
 export default function Icon({ name }) {

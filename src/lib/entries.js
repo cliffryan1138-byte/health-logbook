@@ -1,4 +1,4 @@
-// One timeline out of four tables. The dashboard summarises; the Logbook view
+// One timeline out of five tables. The dashboard summarises; the Logbook view
 // shows every entry as it was logged, and exports it for a doctor, a lawyer, or
 // the person's own records.
 //
@@ -12,6 +12,7 @@ export const KINDS = {
   symptoms: { label: 'Symptoms', one: 'Symptom',  time: 'felt_at',  icon: 'pulse' },
   vitals:   { label: 'Vitals',   one: 'Vitals',   time: 'taken_at', icon: 'drop' },
   exercise: { label: 'Exercise', one: 'Exercise', time: 'done_at',  icon: 'dumbbell' },
+  med_doses: { label: 'Medicine', one: 'Medicine', time: 'taken_at', icon: 'pill' },
 }
 
 export const HEADACHE = /headache|migraine/i
@@ -43,6 +44,9 @@ export function describe(kind, r) {
       stats: [`${r.severity_1_5}/5`, r.duration_hr != null && `${n(r.duration_hr, 1)} hr`].filter(Boolean).join(' · '),
       detail: [r.notes, r.suspected_trigger && `Suspected trigger: ${r.suspected_trigger}`].filter(Boolean).join(' — '),
     }
+  }
+  if (kind === 'med_doses') {
+    return { title: r.name, stats: r.dose || '', detail: r.notes || '' }
   }
   if (kind === 'exercise') {
     return {
@@ -107,6 +111,7 @@ const COLS = {
   symptoms: ['symptom', 'severity_1_5', 'duration_hr', 'suspected_trigger', 'notes'],
   vitals: ['weight_lb', 'bp_systolic', 'bp_diastolic', 'heart_rate', 'glucose_mgdl', 'glucose_context', 'sleep_hr', 'energy_1_5', 'mood_1_5', 'waist_in', 'notes'],
   exercise: ['activity', 'duration_min', 'intensity', 'notes'],
+  med_doses: ['name', 'dose', 'notes'],
 }
 
 export function toCSV(entries) {

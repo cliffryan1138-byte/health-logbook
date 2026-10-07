@@ -1,18 +1,23 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
 import { shrinkToJpeg } from '../lib/images'
 import PaperNotes from './PaperNotes'
+import { DoseSheet } from './Medications'
 
 // v1 quick-log: fast manual forms. The Photo button accepts an image and sends
 // it to the `capture` edge function (Claude API) when deployed; until then it
 // falls back to the manual meal form with a note.
 //
-// RECOVERY NOTE: the header above, the SYMPTOMS list, the component signature
-// and the speech-recognition setup are the original file, recovered from the
-// Vercel deployment. The forms and submit handlers were lost to a response
-// limit and are rebuilt against the live database schema, so every field and
-// every CHECK constraint below matches the real columns.
+// RECOVERY NOTE: the header above, the SYMPTOMS list and the component
+// signature are the original file, recovered from the Vercel deployment. The
+// forms and submit handlers were lost to a response limit and are rebuilt
+// against the live database schema, so every field and every CHECK constraint
+// below matches the real columns.
+//
+// Voice moved to SparkyChat (2026-10-07): "Talk it through" used to save the
+// raw transcript as a meal; now the mic opens a conversation with Sparky, who
+// drafts proper entries of any kind.
 
 const SYMPTOMS = ['Headache', 'Heartburn', 'Bloating', 'Hot flash', 'Fatigue', 'Nausea', 'Joint pain', 'Poor sleep', 'Other']
 
@@ -20,9 +25,10 @@ const CHOICES = [
   { kind: 'meal', icon: 'flame', label: 'Meal or drink', hint: 'What you ate, with calories if you know them' },
   { kind: 'symptom', icon: 'pulse', label: 'Symptom', hint: 'Headache, heartburn, bloating…' },
   { kind: 'vitals', icon: 'drop', label: 'Vitals', hint: 'Weight, blood sugar, blood pressure, sleep' },
+  { kind: 'dose', icon: 'pill', label: 'Medicine taken', hint: 'A dose of something on your list, or anything else' },
   { kind: 'exercise', icon: 'dumbbell', label: 'Exercise', hint: 'Walk, weights, bike…' },
   { kind: 'paper', icon: 'camera', label: 'Old notes or PDF log', hint: 'Photo of paper notes, or a PDF from another app' },
-  { kind: 'talk', icon: 'mic', label: 'Talk it through', hint: 'Say it out loud and tidy it up later' },
+  { kind: 'talk', icon: 'mic', label: 'Talk to Sparky', hint: 'Say what happened; Sparky drafts the entries' },
 ]
 
 // One tap each, written into the entry's notes: the details a headache diary
@@ -48,18 +54,14 @@ const SHEETS = {
   vitals: 'Log vitals',
   exercise: 'Log exercise',
   symptom: 'Log a symptom',
-  talk: 'Talk it through',
 }
 
-export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) {
-  const [openInner, setOpenInner] = useState(null) // 'meal' | 'vitals' | 'exercise' | 'symptom' | 'talk'
+export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpenChange, onTalk }) {
+  const [openInner, setOpenInner] = useState(null) // 'meal' | 'vitals' | 'exercise' | 'symptom' | 'dose'
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [aiNote, setAiNote] = useState('')
   const [form, setForm] = useState({})
-  const [transcript, setTranscript] = useState('')
-  const [listening, setListening] = useState(false)
-  const recRef = useRef(null)
   const fileRef = useRef(null)
 
   // Dashboard can drive the sheet from its "→ log a weigh-in" links; when it
@@ -67,31 +69,9 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
   const open = openKind !== undefined ? openKind : openInner
   const setOpen = (k) => { setOpenInner(k); onOpenChange?.(k) }
 
-  const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
-
-  useEffect(() => () => { recRef.current?.stop?.() }, [])
-
   function openSheet(kind) { setForm(kind === 'symptom' ? { felt_at: localNow() } : {}); setErr(''); setAiNote(''); setOpen(kind) }
-  function close() { setOpen(null); setTranscript(''); setListening(false); recRef.current?.stop?.() }
+  function close() { setOpen(null) }
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
-
-  function toggleListening() {
-    if (listening) { recRef.current?.stop(); setListening(false); return }
-    if (!SR) { setErr('This browser has no speech recognition. Type it instead.'); return }
-    const rec = new SR()
-    rec.continuous = true
-    rec.interimResults = false
-    rec.lang = 'en-US'
-    rec.onresult = (e) => {
-      const chunk = Array.from(e.results).slice(e.resultIndex).map((r) => r[0].transcript).join(' ')
-      setTranscript((t) => (t ? `${t} ${chunk}` : chunk).trim())
-    }
-    rec.onend = () => setListening(false)
-    rec.onerror = () => setListening(false)
-    recRef.current = rec
-    rec.start()
-    setListening(true)
-  }
 
   // ── photo → capture edge function, falling back to the manual meal form ──
   // The capture function expects { kind: 'photo', image_b64, media_type,
@@ -202,16 +182,6 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
         notes: notes || null,
         felt_at: felt.toISOString(),
       })
-    } else if (open === 'talk') {
-      const text = transcript.trim()
-      if (!text) { setErr('Nothing captured yet — tap the mic and speak.'); return }
-      save('meals', {
-        description: text.slice(0, 120),
-        source: 'voice',
-        confidence: 'low',
-        trigger_watch: matchTriggers(text, profile.watch_list),
-        notes: text,
-      })
     }
   }
 
@@ -221,10 +191,13 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
           attribute on the input, so phones offer Take Photo or Photo Library. */}
       <div className="dock">
         <button className="photo" onClick={() => openSheet('picture')}>
-          <Icon name="camera" /> Take a picture
+          <Icon name="camera" /> <span className="long">Take a picture</span><span className="short">Picture</span>
         </button>
         <button className="manual" onClick={() => openSheet('choose')}>
-          <Icon name="pen" /> Add manually
+          <Icon name="pen" /> <span className="long">Add manually</span><span className="short">Add</span>
+        </button>
+        <button className="talk" onClick={() => onTalk?.()} aria-label="Talk to Sparky" title="Talk to Sparky">
+          <Icon name="mic" />
         </button>
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
       </div>
@@ -233,7 +206,11 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
         <PaperNotes profile={profile} onClose={close} onSaved={() => onLogged?.()} />
       )}
 
-      {open && open !== 'paper' && (
+      {open === 'dose' && (
+        <DoseSheet profile={profile} meds={meds} onClose={close} onSaved={() => onLogged?.()} />
+      )}
+
+      {open && open !== 'paper' && open !== 'dose' && (
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
             <h3>{SHEETS[open]}</h3>
@@ -258,7 +235,9 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
             {open === 'choose' && (
               <div className="choose">
                 {CHOICES.map((c) => (
-                  <button type="button" key={c.kind} className="choice" onClick={() => openSheet(c.kind)}>
+                  <button type="button" key={c.kind} className="choice"
+                    // Talking opens Sparky; the mic must start inside this tap.
+                    onClick={() => { if (c.kind === 'talk') { close(); onTalk?.() } else openSheet(c.kind) }}>
                     <span className="choice-ico"><Icon name={c.icon} /></span>
                     <span className="choice-text"><b>{c.label}</b><span>{c.hint}</span></span>
                   </button>
@@ -381,23 +360,6 @@ export default function QuickLog({ profile, onLogged, openKind, onOpenChange }) 
                 )}
                 <Field label="Suspected trigger"><input value={form.suspected_trigger || ''} onChange={set('suspected_trigger')} placeholder="skipped lunch, poor sleep…" /></Field>
                 <Field label="Notes"><textarea rows={2} value={form.notes || ''} onChange={set('notes')} /></Field>
-              </>
-            )}
-
-            {open === 'talk' && (
-              <>
-                <p className="note">
-                  Tap the mic and say what you ate or how you feel. It saves as a
-                  voice entry you can tidy up later.
-                </p>
-                <div className="actions">
-                  <button type="button" className={listening ? 'btn' : 'btn ghost'} onClick={toggleListening}>
-                    {listening ? 'Stop listening' : 'Start listening'}
-                  </button>
-                </div>
-                <Field label="Captured">
-                  <textarea rows={4} value={transcript} onChange={(e) => setTranscript(e.target.value)} />
-                </Field>
               </>
             )}
 

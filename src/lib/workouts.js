@@ -159,3 +159,15 @@ export function targetReps(reps) {
   if (!nums || /s\b|sec|min|round/i.test(reps)) return null
   return Number(nums[nums.length - 1])
 }
+
+// Finished workouts, newest first, with their sets.
+export async function loadWorkoutHistory(profileId, limit = 60) {
+  const { data: ex, error } = await supabase.from('exercise').select('*')
+    .eq('profile_id', profileId).order('done_at', { ascending: false }).limit(limit)
+  if (error) throw error
+  if (!ex?.length) return []
+  const { data: sets, error: e2 } = await supabase.from('workout_sets').select('*')
+    .in('exercise_id', ex.map((x) => x.id)).order('set_no')
+  if (e2) throw e2
+  return ex.map((x) => ({ ...x, sets: (sets || []).filter((s) => s.exercise_id === x.id) }))
+}
