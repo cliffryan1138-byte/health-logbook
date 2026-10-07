@@ -235,6 +235,12 @@ Deno.serve(async (req) => {
     // Reading a label or a meter takes more care than a spoken reply.
     const lastIsPhoto = isPhoto(kept[kept.length - 1]);
 
+    // Spend gate (migration 0008): the database counts the call against this
+    // person's budget before Claude is asked. Any error counts as a refusal.
+    const { data: allowed, error: quotaErr } = await supa.rpc("claim_ai_call", { p_fn: "sparky-chat" });
+    if (quotaErr) console.error("sparky-chat: quota check failed", quotaErr.message);
+    if (quotaErr || !allowed) return json({ error: "That's a lot of questions for now. Give it a little while and try again." }, 429);
+
     const log = await logContext(supa, user.id);
     const clock = typeof now === "string" ? now.slice(0, 40) : new Date().toISOString();
 
