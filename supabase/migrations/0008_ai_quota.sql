@@ -54,7 +54,9 @@ begin
   -- under the same count.
   perform pg_advisory_xact_lock(hashtext('ai_quota:' || uid::text));
 
-  delete from private.ai_calls where profile_id = uid and called_at < now() - interval '2 days';
+  -- Everyone's old rows, not just this caller's, so the two-day limit holds
+  -- for people who stop using the app.
+  delete from private.ai_calls where called_at < now() - interval '2 days';
 
   select count(*) filter (where c.called_at > now() - interval '1 minute'),
          count(*) filter (where c.called_at > now() - interval '1 hour'),
