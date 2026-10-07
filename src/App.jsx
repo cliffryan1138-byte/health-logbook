@@ -3,6 +3,7 @@ import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
 import Dashboard from './pages/Dashboard'
 import SetPassword from './pages/SetPassword'
+import UpdateBanner from './components/UpdateBanner'
 
 function Gate() {
   const { session, profile, recovery } = useAuth()
@@ -18,6 +19,7 @@ function Gate() {
 export default function App() {
   return (
     <AuthProvider>
+      <UpdateBanner />
       <Gate />
     </AuthProvider>
   )

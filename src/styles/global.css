@@ -682,3 +682,16 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .chat-bar .cam[disabled] { opacity: .45; cursor: default; }
 .chat-bar .cam svg { width: 20px; height: 20px; }
+
+/* ── "A new version is ready" ─────────────────────────────────────────────── */
+.update-banner {
+  position: fixed; z-index: 60; left: 12px; right: 12px; top: calc(10px + env(safe-area-inset-top));
+  max-width: 480px; margin: 0 auto; display: flex; align-items: center; gap: 12px;
+  padding: 10px 10px 10px 16px; border-radius: 14px; box-shadow: var(--shadow);
+  background: var(--ink); color: var(--surface); font-size: 14.5px;
+}
+.update-banner span { flex: 1; }
+.update-banner button {
+  flex: none; min-height: 40px; padding: 0 16px; border: 0; border-radius: 10px; cursor: pointer;
+  background: var(--gold); color: var(--gold-ink); font: 600 15px/1 inherit; font-family: inherit;
+}
