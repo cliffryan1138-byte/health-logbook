@@ -8,6 +8,7 @@ import FeedbackBox from '../components/FeedbackBox'
 import SymptomCalendar from '../components/SymptomCalendar'
 import TrendChart from '../components/TrendChart'
 import Logbook from './Logbook'
+import Workouts from './Workouts'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
 import { KINDS, toEntries, dayKey, fmtDay, fmtTime, isHeadache } from '../lib/entries'
@@ -33,7 +34,7 @@ function remembered(key, fallback, allowed) {
 export default function Dashboard() {
   const { profile, signOut } = useAuth()
   const [range, setRange] = useState(() => remembered('range', 30, RANGES.map((r) => r[0])))
-  const [view, setView] = useState(() => remembered('view', 'overview', ['overview', 'logbook']))
+  const [view, setView] = useState(() => remembered('view', 'overview', ['overview', 'workouts', 'logbook']))
   // The calendar always wants at least five weeks of context.
   const fetchDays = Math.max(range, 35)
   const logs = useLogs(profile.id, fetchDays)
@@ -60,17 +61,22 @@ export default function Dashboard() {
       <div className="viewbar screen-only">
         <div className="seg" role="tablist" aria-label="View">
           <button role="tab" aria-selected={view === 'overview'} onClick={() => setView('overview')}>Overview</button>
+          <button role="tab" aria-selected={view === 'workouts'} onClick={() => setView('workouts')}>Workouts</button>
           <button role="tab" aria-selected={view === 'logbook'} onClick={() => setView('logbook')}>Logbook</button>
         </div>
-        <div className="seg" role="group" aria-label="Time range">
-          {RANGES.map(([v, l]) => (
-            <button key={v} aria-pressed={range === v} onClick={() => setRange(v)}>{l}</button>
-          ))}
-        </div>
+        {view !== 'workouts' && (
+          <div className="seg" role="group" aria-label="Time range">
+            {RANGES.map(([v, l]) => (
+              <button key={v} aria-pressed={range === v} onClick={() => setRange(v)}>{l}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {logs.loading ? (
         <div className="card empty">Loading your log…</div>
+      ) : view === 'workouts' ? (
+        <Workouts profile={profile} onLogged={logs.refresh} />
       ) : view === 'logbook' ? (
         <Logbook entries={entries} days={range} profile={profile} />
       ) : (
