@@ -107,9 +107,16 @@ function email(alert: string, p: Probe, since: string, drill: boolean) {
   };
 }
 
+// A pasted secret often carries a stray space, quotes or a "Bearer " prefix.
+const clean = (v: string | undefined) =>
+  (v ?? "").trim().replace(/^["']+|["']+$/g, "").replace(/^Bearer\s+/i, "").trim();
+
+// What a secret looks like, never what it is: enough to spot a bad paste.
+const shape = (v: string) => `starts "${v.slice(0, 3)}", ${v.length} chars${/\s/.test(v) ? ", contains whitespace" : ""}`;
+
 async function send(subject: string, text: string): Promise<string | null> {
-  const key = Deno.env.get("RESEND_API_KEY");
-  const to = Deno.env.get("ALERT_EMAIL");
+  const key = clean(Deno.env.get("RESEND_API_KEY"));
+  const to = clean(Deno.env.get("ALERT_EMAIL"));
   if (!key || !to) return "RESEND_API_KEY or ALERT_EMAIL is not set";
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -119,7 +126,7 @@ async function send(subject: string, text: string): Promise<string | null> {
     body: JSON.stringify({ from: "Daybook alerts <onboarding@resend.dev>", to: [to], subject, text }),
   });
   if (res.ok) return null;
-  return `Resend HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`;
+  return `Resend HTTP ${res.status}: ${(await res.text()).slice(0, 200)} (key ${shape(key)}; Resend keys start "re_")`;
 }
 
 Deno.serve(async (req) => {
