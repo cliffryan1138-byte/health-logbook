@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Icon from '../lib/icons'
 import {
-  KINDS, isHeadache, toCSV, download, slug, dayKey, fmtDay, fmtTime, fmtStamp, describe,
+  KINDS, entryTime, entryClock, isHeadache, toCSV, download, slug, dayKey, fmtDay, fmtTime, fmtStamp, describe,
 } from '../lib/entries'
 import { sha256, logEvent, loadHistory } from '../lib/audit'
 import Activity from '../components/Activity'
@@ -100,7 +100,7 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
       if (!KINDS[h.table_name]) return false
       if (ids.has(`${h.table_name}:${h.row_id}`)) return true
       if (h.op !== 'delete') return false
-      const at = new Date(h.old_row[KINDS[h.table_name].time])
+      const at = entryTime(h.table_name, h.old_row)
       const e = { kind: h.table_name, raw: h.old_row }
       if (at < new Date(Date.now() - (days - 1) * 86400000)) return false
       if (headOnly) return isHeadache(e)
@@ -197,7 +197,7 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
                         {e.late && <div className="feed-late">Entered later · {fmtStamp(e.recorded)}</div>}
                         {e.edited && <div className="feed-late">Edited · {fmtStamp(e.edited)}</div>}
                       </div>
-                      <time className="feed-time">{fmtTime(e.at)}</time>
+                      <time className="feed-time">{entryClock(e)}</time>
                     </li>
                   ))}
                 </ul>
@@ -270,7 +270,7 @@ function PrintRecord({ entries, purpose, who, period, filterText, hash, changes,
             <tr key={e.id}>
               <td>{i + 1}</td>
               <td>{dayKey(e.at)}</td>
-              <td>{fmtTime(e.at)}</td>
+              <td>{entryClock(e)}</td>
               <td>{KINDS[e.kind].one}</td>
               <td>
                 <b>{e.title}</b>{e.stats && ` · ${e.stats}`}
@@ -304,7 +304,7 @@ function PrintRecord({ entries, purpose, who, period, filterText, hash, changes,
                     <td>{KINDS[h.table_name].one}</td>
                     <td>
                       <b>{d.title}</b>{d.stats && ` · ${d.stats}`}
-                      <div className="rec-detail">{fmtStamp(new Date(h.old_row[KINDS[h.table_name].time]))}{d.detail && ` — ${d.detail}`}</div>
+                      <div className="rec-detail">{fmtStamp(entryTime(h.table_name, h.old_row))}{d.detail && ` — ${d.detail}`}</div>
                     </td>
                     <td>{h.old_row.created_at ? fmtStamp(new Date(h.old_row.created_at)) : ''}</td>
                   </tr>

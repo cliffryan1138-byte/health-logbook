@@ -15,7 +15,7 @@ import SparkyChat from '../components/SparkyChat'
 import Settings from '../components/Settings'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
-import { KINDS, toEntries, dayKey, fmtDay, fmtTime, isHeadache } from '../lib/entries'
+import { KINDS, toEntries, dayKey, fmtDay, fmtTime, entryClock, isHeadache } from '../lib/entries'
 
 // Three views. Overview is the at-a-glance picture — one headline, at most four
 // tiles, medications, a symptom calendar and ONE trend chart with tabs —
@@ -105,6 +105,7 @@ export default function Dashboard() {
           fetchDays={fetchDays}
           from={from}
           onOpenLog={() => setView('logbook')}
+          onCheckIn={() => setLogKind('checkin')}
         />
       )}
 
@@ -127,7 +128,7 @@ export default function Dashboard() {
   )
 }
 
-function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenLog }) {
+function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenLog, onCheckIn }) {
   const inRange = (rows, field) => rows.filter((r) => new Date(r[field]) >= from)
   const meals = inRange(logs.meals, 'eaten_at')
   const vitals = inRange(logs.vitals, 'taken_at')
@@ -221,6 +222,9 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
             ? <>Today: {todayMeals.length} meal{todayMeals.length === 1 ? '' : 's'}{sum(todayMeals, 'calories') != null && <> · {fmt(sum(todayMeals, 'calories'))} kcal</>}</>
             : 'Nothing logged today yet.'}
         </p>
+        <button type="button" className="checkin-link" onClick={onCheckIn}>
+          {(logs.daily_checkins || []).some((c) => c.day === todayK) ? 'Update today’s check-in' : 'Check in for today: sleep, mood, drinks'}
+        </button>
       </div>
 
       {tiles.length > 0 && (
@@ -261,7 +265,7 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
               <div className="feed-body">
                 <div className="feed-title">{e.title}{e.stats && <span className="feed-stats"> · {e.stats}</span>}</div>
               </div>
-              <time className="feed-time">{fmtDay(e.at, { month: 'short', day: 'numeric' })}<br />{fmtTime(e.at)}</time>
+              <time className="feed-time">{fmtDay(e.at, { month: 'short', day: 'numeric' })}<br />{entryClock(e)}</time>
             </li>
           ))}
         </ul>

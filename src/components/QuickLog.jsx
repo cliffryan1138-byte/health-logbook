@@ -3,6 +3,8 @@ import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
 import PaperNotes from './PaperNotes'
 import { DoseSheet } from './Medications'
+import SymptomPicker from './SymptomPicker'
+import CheckIn from './CheckIn'
 
 // v1 quick-log: fast manual forms, and the dock that opens them.
 //
@@ -21,11 +23,13 @@ import { DoseSheet } from './Medications'
 // medicine label, a meter reading, a rash, paper notes — and drafts what fits.
 // Testers couldn't photograph their medicine when the camera only knew food.
 // Old notes and PDF logs keep their own importer under Add manually.
-const SYMPTOMS = ['Headache', 'Heartburn', 'Bloating', 'Hot flash', 'Fatigue', 'Nausea', 'Joint pain', 'Poor sleep', 'Other']
+// The symptom list itself lives in lib/symptoms.js (the symptom library,
+// WG-PLAN-HEALTH-002 workstream 1).
 
 const CHOICES = [
+  { kind: 'checkin', icon: 'moon', label: 'Daily check-in', hint: 'Sleep, mood, water, caffeine, alcohol, how the day went' },
   { kind: 'meal', icon: 'flame', label: 'Meal or drink', hint: 'What you ate, with calories if you know them' },
-  { kind: 'symptom', icon: 'pulse', label: 'Symptom', hint: 'Headache, heartburn, bloating…' },
+  { kind: 'symptom', icon: 'pulse', label: 'Symptom', hint: 'Anything you feel: search the list or type your own' },
   { kind: 'vitals', icon: 'drop', label: 'Vitals', hint: 'Weight, blood sugar, blood pressure, sleep' },
   { kind: 'dose', icon: 'pill', label: 'Medicine taken', hint: 'A dose of something on your list, or anything else' },
   { kind: 'exercise', icon: 'dumbbell', label: 'Exercise', hint: 'Walk, weights, bike…' },
@@ -133,6 +137,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
       const notes = [(form.details || []).join(', '), form.notes?.trim()].filter(Boolean).join('. ')
       save('symptoms', {
         symptom: form.symptom,
+        body_group: form.body_group || null,
         severity_1_5: Number(form.severity_1_5),
         duration_hr: num(form.duration_hr),
         suspected_trigger: form.suspected_trigger?.trim() || null,
@@ -163,11 +168,15 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         <PaperNotes profile={profile} onClose={close} onSaved={() => onLogged?.()} />
       )}
 
+      {open === 'checkin' && (
+        <CheckIn profile={profile} onClose={close} onSaved={() => onLogged?.()} />
+      )}
+
       {open === 'dose' && (
         <DoseSheet profile={profile} meds={meds} onClose={close} onSaved={() => onLogged?.()} />
       )}
 
-      {open && open !== 'paper' && open !== 'dose' && (
+      {open && open !== 'paper' && open !== 'dose' && open !== 'checkin' && (
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
             <h3>{SHEETS[open]}</h3>
@@ -255,21 +264,11 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
 
             {open === 'symptom' && (
               <>
-                <Field label="Symptom">
-                  <div className="chips">
-                    {SYMPTOMS.map((sy) => (
-                      <button
-                        type="button"
-                        key={sy}
-                        className="chip"
-                        aria-pressed={form.symptom === sy}
-                        onClick={() => setForm((f) => ({ ...f, symptom: sy }))}
-                      >
-                        {sy}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
+                <div className="field">
+                  <span>Symptom</span>
+                  <SymptomPicker profile={profile} value={{ symptom: form.symptom, group: form.body_group }}
+                    onChange={({ symptom, group }) => setForm((f) => ({ ...f, symptom, body_group: group }))} />
+                </div>
                 <Field label={`How bad? ${form.severity_1_5 ? `— ${SEVERITY_WORDS[form.severity_1_5]}` : '(tap one)'}`}>
                   <div className="sev-pick" role="group" aria-label="Severity 1 to 5">
                     {[1, 2, 3, 4, 5].map((v) => (

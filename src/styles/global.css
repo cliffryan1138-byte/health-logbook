@@ -318,6 +318,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .dots i { width: 12px; height: 12px; border-radius: 50%; background: var(--cell); }
 .dots i.on { background: var(--gold); }
 .hero-today { margin: 12px 0 0; color: var(--ink-soft); font-size: 14px; }
+.checkin-link {
+  margin-top: 10px; padding: 0; background: none; border: 0; cursor: pointer;
+  color: var(--gold-text); font-size: 14px; text-decoration: underline; text-underline-offset: 3px;
+}
 
 .tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px; }
@@ -518,6 +522,30 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .sev-pick button[aria-pressed="true"][data-level="5"] { color: #0A264C; }
 }
 .field input[type="datetime-local"] { min-height: 44px; }
+.field input[type="date"] { min-height: 44px; }
+/* Check-in scales (mood, energy, sleep quality…): 5 isn't "worse" there, so
+   the picked number takes the plain accent, not the severity ramp. */
+.sev-pick.plain button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+/* ── daily check-in ───────────────────────────────────────────────────── */
+.checkin-lead { margin: -4px 0 6px; }
+.checkin-h {
+  margin: 20px 0 8px; padding-top: 14px; border-top: 1px solid var(--line);
+  font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint);
+}
+.checkin-notes { margin-top: 14px; }
+
+/* ── symptom library picker ───────────────────────────────────────────── */
+.sympick .chips { margin-bottom: 10px; }
+.sympick-search {
+  width: 100%; padding: 10px 12px; font-size: 15px; font-family: inherit; margin-bottom: 10px;
+  color: var(--ink); background: var(--ground); border: 1px solid var(--line-strong); border-radius: 10px;
+}
+.sympick-groups details { border-top: 1px solid var(--line); }
+.sympick-groups details:last-child { border-bottom: 1px solid var(--line); }
+.sympick-groups summary { padding: 10px 2px; cursor: pointer; font-size: 14.5px; color: var(--ink); }
+.sympick-groups details[open] summary { font-weight: 600; }
+
 
 /* ── Record integrity: export confirmation, access log, fingerprint ───────── */
 .export .saved-note { margin: 10px 0 0; color: var(--good); font-weight: 600; font-size: 13.5px; overflow-wrap: anywhere; }
