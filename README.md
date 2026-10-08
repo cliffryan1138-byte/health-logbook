@@ -1,6 +1,6 @@
 # Daybook
 
-A Vite + React PWA on Supabase, deployed to `healthtrack.wastegate.ai`.
+A Vite + React PWA on Supabase, deployed to `daybook.wastegate.ai`. The old addresses (`healthtrack.`, `healthtracker.`, `health-logbook.`, `app.ht.`) still serve it and send people on (`src/lib/move.js`).
 
 Photo, voice or manual capture of meals, vitals, exercise and symptoms; a
 14-day dashboard that summarises them. The companion `health-tracker` Claude

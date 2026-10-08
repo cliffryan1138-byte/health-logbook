@@ -2,13 +2,17 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App'
 import './styles/global.css'
+import { moveIfReady } from './lib/move'
 
 // "healthtrack.wastegate.ai." (trailing dot — a valid but unusual spelling
 // that a bookmark had picked up) is a separate origin to the browser: its
 // sign-in is stored separately, and email links sent back to it failed to
 // load for at least one tester. Move to the plain host, keeping the path and
 // the #hash so any sign-in tokens in it survive the hop.
-if (location.hostname.endsWith('.')) {
+// An old address goes straight on to daybook.wastegate.ai (lib/move.js),
+// which also covers a trailing dot on an old address.
+const leaving = moveIfReady()
+if (!leaving && location.hostname.endsWith('.')) {
   const u = new URL(location.href)
   u.hostname = u.hostname.replace(/\.+$/, '')
   location.replace(u.toString())
@@ -22,8 +26,10 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
   })
 }
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-)
+if (!leaving) {
+  ReactDOM.createRoot(document.getElementById('root')).render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+  )
+}
