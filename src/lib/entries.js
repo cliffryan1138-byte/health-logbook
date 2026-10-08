@@ -1,3 +1,4 @@
+import { followupText } from './followups'
 // One timeline out of five tables. The dashboard summarises; the Logbook view
 // shows every entry as it was logged, and exports it for a doctor, a lawyer, or
 // the person's own records.
@@ -62,7 +63,8 @@ export function describe(kind, r) {
     return {
       title: r.symptom,
       stats: [`${r.severity_1_5}/5`, r.duration_hr != null && `${n(r.duration_hr, 1)} hr`].filter(Boolean).join(' · '),
-      detail: [r.notes, r.suspected_trigger && `Suspected trigger: ${r.suspected_trigger}`].filter(Boolean).join(' — '),
+      detail: [r.notes, r.suspected_trigger && `Suspected trigger: ${r.suspected_trigger}`,
+        r.followups?.length && `Sparky asked: ${followupText(r.followups)}`].filter(Boolean).join(' — '),
     }
   }
   if (kind === 'med_doses') {
@@ -181,7 +183,7 @@ export function fmtStamp(d) {
 
 const COLS = {
   meals: ['description', 'calories', 'carbs_g', 'sugar_g', 'fiber_g', 'protein_g', 'fat_g', 'sodium_mg', 'confidence', 'source', 'trigger_watch', 'notes'],
-  symptoms: ['symptom', 'body_group', 'severity_1_5', 'duration_hr', 'suspected_trigger', 'notes'],
+  symptoms: ['symptom', 'body_group', 'severity_1_5', 'duration_hr', 'suspected_trigger', 'notes', 'followups'],
   vitals: ['weight_lb', 'bp_systolic', 'bp_diastolic', 'heart_rate', 'glucose_mgdl', 'glucose_context', 'sleep_hr', 'energy_1_5', 'mood_1_5', 'waist_in', 'notes'],
   exercise: ['activity', 'duration_min', 'intensity', 'notes'],
   med_doses: ['name', 'dose', 'notes'],
@@ -204,7 +206,7 @@ export function toCSV(entries) {
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const rows = [...entries].sort((a, b) => a.at - b.at).map((e) =>
-    [KINDS[e.kind].one, dayKey(e.at), e.kind === 'daily_checkins' ? '' : fmtTime(e.at), ...fields.map((f) => e.raw[f]),
+    [KINDS[e.kind].one, dayKey(e.at), e.kind === 'daily_checkins' ? '' : fmtTime(e.at), ...fields.map((f) => (f === 'followups' ? followupText(e.raw[f]) || null : e.raw[f])),
       e.recorded ? e.recorded.toISOString() : '', e.edited ? e.edited.toISOString() : ''].map(q).join(','))
   return [head.join(','), ...rows].join('\n')
 }

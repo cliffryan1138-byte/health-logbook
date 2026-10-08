@@ -936,3 +936,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .med-report .statement { background: #f4f6f9; border-color: #bbb; font-size: 9pt; }
   .med-report .rep-quoted summary { list-style: none; }
 }
+
+/* Sparky's follow-up questions (FollowUps) */
+.followups .fu-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 6px; }
+.followups .fu-head h3 { margin: 0 0 2px; }
+.followups .fu-q { border-top: 1px solid var(--line); padding: 10px 0; }
+.followups .fu-q p { margin: 0 0 8px; font-weight: 600; }
+.followups .fu-num { width: 120px; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; font: inherit; font-size: 16px; background: var(--surface-2); color: var(--ink); }

@@ -8,6 +8,9 @@ import CheckIn from './CheckIn'
 import Questionnaire from './Questionnaire'
 import Meditation from './Meditation'
 import { checkReading, checkSymptom, saveVitals } from '../lib/pregnancy'
+import { mentionsCrisis } from '../lib/crisis'
+import { questionsFor } from '../lib/followups'
+import FollowUps from './FollowUps'
 
 // v1 quick-log: fast manual forms, and the dock that opens them.
 //
@@ -77,6 +80,8 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   const [err, setErr] = useState('')
   const [form, setForm] = useState({})
   const [editing, setEditing] = useState(null) // { kind, row } while editing a saved entry
+  const [followUp, setFollowUp] = useState(null) // { symptom, questions } after a new symptom is saved
+  const [doseFor, setDoseFor] = useState(null) // a medicine to log a dose of, from a follow-up "Yes"
   const fileRef = useRef(null)
 
   // Dashboard can drive the sheet from its "→ log a weigh-in" links; when it
@@ -116,13 +121,25 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
 
   async function save(table, row) {
     setBusy(true); setErr('')
-    const { error } = editing
-      ? await supabase.from(table).update(row).eq('id', editing.row.id).eq('profile_id', profile.id)
-      : await supabase.from(table).insert({ ...row, profile_id: profile.id })
+    const { data, error } = editing
+      ? await supabase.from(table).update(row).eq('id', editing.row.id).eq('profile_id', profile.id).select().single()
+      : await supabase.from(table).insert({ ...row, profile_id: profile.id }).select().single()
     setBusy(false)
-    if (error) { setErr(error.message); return }
+    if (error) { setErr(error.message); return null }
     close()
     onLogged?.()
+    return data
+  }
+
+  // After a new symptom: Sparky's follow-up questions about gaps in the log
+  // (lib/followups.js). Not when the 988 card or the pregnancy warning signs
+  // came up for it: those come first and nothing is stacked on them.
+  async function askFollowUps(saved, safetyShown) {
+    if (!saved || safetyShown) return
+    try {
+      const questions = await questionsFor(profile.id, saved)
+      if (questions.length) setFollowUp({ symptom: saved, questions })
+    } catch { /* no questions is fine */ }
   }
 
   // Blood pressure is checked on the phone before saving: a reading in the
@@ -139,7 +156,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
     setErr(r.queued ? 'No connection. This reading is kept on your phone and saves when you’re back online.' : (r.error?.message || 'Couldn’t save.'))
   }
 
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault()
     let at = null
     if (TIMED[open]) {
@@ -203,8 +220,10 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
       const notes = [(form.details || []).join(', '), sick, form.notes?.trim()].filter(Boolean).join('. ')
       // During pregnancy, a headache, vision change or upper-belly pain brings
       // up the CDC warning signs, before (and whether or not) it saves.
-      checkSymptom({ symptom: form.symptom, notes, felt_at: felt })
-      save('symptoms', {
+      const signs = checkSymptom({ symptom: form.symptom, notes, felt_at: felt })
+      const crisis = mentionsCrisis(`${form.symptom} ${notes} ${form.suspected_trigger || ''}`)
+      const isNew = !editing
+      const saved = await save('symptoms', {
         symptom: form.symptom,
         body_group: form.body_group || null,
         severity_1_5: Number(form.severity_1_5),
@@ -213,6 +232,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         notes: notes || null,
         felt_at: felt.toISOString(),
       })
+      if (isNew) askFollowUps(saved, signs || crisis)
     }
   }
 
@@ -247,6 +267,15 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
 
       {open === 'checkin' && (
         <CheckIn profile={profile} onClose={close} onSaved={() => onLogged?.()} />
+      )}
+
+      {followUp && (
+        <FollowUps profile={profile} symptom={followUp.symptom} questions={followUp.questions}
+          onDone={() => { setFollowUp(null); onLogged?.() }}
+          onLogDose={(id) => setDoseFor(meds.find((m) => m.id === id) || null)} />
+      )}
+      {doseFor && (
+        <DoseSheet profile={profile} meds={meds} med={doseFor} onClose={() => setDoseFor(null)} onSaved={() => onLogged?.()} />
       )}
 
       {open === 'dose' && (

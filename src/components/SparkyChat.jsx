@@ -4,7 +4,10 @@ import Icon from '../lib/icons'
 import { describe } from '../lib/entries'
 import { addMed, logDose, matchMed, medLine } from '../lib/meds'
 import { shrinkToJpeg } from '../lib/images'
-import { checkCrisis, openCrisis } from '../lib/crisis'
+import { checkCrisis, openCrisis, mentionsCrisis } from '../lib/crisis'
+import { questionsFor } from '../lib/followups'
+import FollowUps from './FollowUps'
+import { DoseSheet } from './Medications'
 import { checkReading, checkSymptom } from '../lib/pregnancy'
 
 // Talk or type to Sparky. Testers asked for a microphone to speak back and
@@ -66,6 +69,8 @@ const LABEL = { meals: 'Meal', vitals: 'Vitals', exercise: 'Exercise', symptoms:
 
 export default function SparkyChat({ profile, meds, onLogged, onClose, listenFirst, firstPhoto }) {
   const [msgs, setMsgs] = useState([]) // { role, text, drafts?: [{..., saved}] }
+  const [followUp, setFollowUp] = useState(null) // Sparky's follow-up questions for a symptom just saved
+  const [doseFor, setDoseFor] = useState(null)
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -232,13 +237,19 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
           checkReading(row)
         }
         if (item.kind === 'exercise') row.done_at = when(r.at)
+        let safety = false
         if (item.kind === 'symptoms') {
           row.felt_at = when(r.at)
           row.severity_1_5 = Math.min(5, Math.max(1, Math.round(Number(row.severity_1_5) || 0)))
-          checkSymptom(row)
+          safety = checkSymptom(row) || mentionsCrisis(`${row.symptom || ''} ${row.notes || ''} ${row.suspected_trigger || ''}`)
         }
-        const { error } = await supabase.from(TABLE[item.kind]).insert({ ...row, profile_id: profile.id })
+        const { data: saved, error } = await supabase.from(TABLE[item.kind]).insert({ ...row, profile_id: profile.id }).select().single()
         if (error) throw error
+        // A new symptom gets the same follow-up questions as one typed in
+        // (lib/followups.js), unless a safety card came up for it.
+        if (item.kind === 'symptoms' && !safety && saved) {
+          questionsFor(profile.id, saved).then((qs) => { if (qs.length) setFollowUp({ symptom: saved, questions: qs }) }).catch(() => {})
+        }
       }
       mark({ saving: false, saved: true })
       onLogged?.()
@@ -315,6 +326,12 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
           <button type="submit" className="send" aria-label="Send" disabled={busy || !text.trim()}><Icon name="send" /></button>
         </form>
       </div>
+      {followUp && (
+        <FollowUps profile={profile} symptom={followUp.symptom} questions={followUp.questions}
+          onDone={() => { setFollowUp(null); onLogged?.() }}
+          onLogDose={(id) => setDoseFor((meds || []).find((m) => m.id === id) || null)} />
+      )}
+      {doseFor && <DoseSheet profile={profile} meds={meds || []} med={doseFor} onClose={() => setDoseFor(null)} onSaved={() => onLogged?.()} />}
     </div>
   )
 }

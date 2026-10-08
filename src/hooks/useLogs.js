@@ -11,7 +11,7 @@ export function useLogs(profileId, days = 14) {
   const refresh = useCallback(async () => {
     if (!profileId) return
     const since = daysAgo(days)
-    const [meals, vitals, exercise, symptoms, doses, checkins, assessments, meditations, pregnancyEvents, meds] = await Promise.all([
+    const [meals, vitals, exercise, symptoms, doses, checkins, assessments, meditations, pregnancyEvents, meds, followups] = await Promise.all([
       supabase.from('meals').select('*').eq('profile_id', profileId).gte('eaten_at', since).order('eaten_at'),
       supabase.from('vitals').select('*').eq('profile_id', profileId).gte('taken_at', since).order('taken_at'),
       supabase.from('exercise').select('*').eq('profile_id', profileId).gte('done_at', since).order('done_at'),
@@ -24,12 +24,15 @@ export function useLogs(profileId, days = 14) {
       // The whole medication list, stopped ones included: it's short, and the
       // printed record lists what was taken over the period.
       supabase.from('medications').select('*').eq('profile_id', profileId).order('name'),
+      // Sparky's follow-up questions and answers, shown beside their symptom.
+      supabase.from('symptom_followups').select('symptom_id, items').eq('profile_id', profileId).gte('asked_at', since),
     ])
+    const fu = new Map((followups.data ?? []).map((f) => [f.symptom_id, f.items]))
     setLogs({
       meals: meals.data ?? [],
       vitals: vitals.data ?? [],
       exercise: exercise.data ?? [],
-      symptoms: symptoms.data ?? [],
+      symptoms: (symptoms.data ?? []).map((r) => (fu.has(r.id) ? { ...r, followups: fu.get(r.id) } : r)),
       med_doses: doses.data ?? [],
       daily_checkins: checkins.data ?? [],
       assessments: assessments.data ?? [],
