@@ -300,7 +300,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
             aria-pressed={listening || handsFree} aria-label={listening || handsFree ? 'Stop talking' : 'Talk to Sparky'} onClick={toggleMic}>
             <Icon name="mic" />
           </button>
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={listening ? 'Listening…' : 'Ask Sparky or tell it what happened'}
+          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={listening ? 'Listening…' : 'Ask Sparky or tell him what happened'}
             aria-label="Message to Sparky" enterKeyHint="send" />
           <button type="submit" className="send" aria-label="Send" disabled={busy || !text.trim()}><Icon name="send" /></button>
         </form>

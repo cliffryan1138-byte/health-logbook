@@ -44,6 +44,12 @@ Deno.serve(async (req) => {
       .map((f) => `${f}: ${TRIGGERS[f].join(", ")}`)
       .join("\n");
 
+    // Spend gate (migration 0008): the database counts the call against this
+    // person's budget before Claude is asked. Any error counts as a refusal.
+    const { data: allowed, error: quotaErr } = await supa.rpc("claim_ai_call", { p_fn: "capture" });
+    if (quotaErr) console.error("capture: quota check failed", quotaErr.message);
+    if (quotaErr || !allowed) return new Response(JSON.stringify({ error: "That's a lot of logging for now. Give it a little while and try again." }), { status: 429, headers: { ...cors, "Content-Type": "application/json" } });
+
     // A spoken ramble is usually several entries at once — split it into rows
     // across all four log types, exactly like the skill does.
     if (kind === "ramble") {

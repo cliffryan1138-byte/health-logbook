@@ -85,6 +85,12 @@ Deno.serve(async (req) => {
     if (!image_b64 && !pdf_b64) return json({ error: "No image or PDF" }, 400);
     const todayIso = /^\d{4}-\d{2}-\d{2}$/.test(today ?? "") ? today : new Date().toISOString().slice(0, 10);
 
+    // Spend gate (migration 0008): the database counts the call against this
+    // person's budget before Claude is asked. Any error counts as a refusal.
+    const { data: allowed, error: quotaErr } = await supa.rpc("claim_ai_call", { p_fn: "read-notes" });
+    if (quotaErr) console.error("read-notes: quota check failed", quotaErr.message);
+    if (quotaErr || !allowed) return json({ error: "That's a lot of reading for now. Give it a little while and try again." }, 429);
+
     const response = await anthropic.messages.parse({
       model: "claude-opus-5-5",
       max_tokens: 16000,
