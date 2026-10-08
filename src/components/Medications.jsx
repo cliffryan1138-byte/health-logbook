@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Card from './Card'
 import { addMed, stopMed, logDose, isCurrent, medLine, today } from '../lib/meds'
+import { supabase } from '../lib/supabase'
 import { fmtDay, fmtTime } from '../lib/entries'
 
 // The Overview card: what you take, "Took it" beside each, and the last dose.
@@ -68,6 +69,13 @@ function localNow() {
   return d.toISOString().slice(0, 16)
 }
 
+// A saved moment, as a datetime-local value in the phone's time.
+function toLocalInput(iso) {
+  const d = new Date(iso)
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 16)
+}
+
 export function AddMedSheet({ profile, onClose, onSaved }) {
   const [f, setF] = useState({ started_on: today() })
   const [busy, setBusy] = useState(false)
@@ -104,10 +112,14 @@ export function AddMedSheet({ profile, onClose, onSaved }) {
 }
 
 // One dose. With `med` it's that medicine; without, pick from the list or type one.
-export function DoseSheet({ profile, meds, med, onClose, onSaved }) {
+// `existing` is a saved dose to edit (from the Logbook); saving updates it,
+// and the earlier version stays in the change history.
+export function DoseSheet({ profile, meds, med, existing, onClose, onSaved }) {
   const current = meds.filter(isCurrent)
-  const [pick, setPick] = useState(med || null)
-  const [f, setF] = useState({ dose: med?.dose || '', taken_at: localNow() })
+  const [pick, setPick] = useState(med || (existing && meds.find((m) => m.id === existing.medication_id)) || null)
+  const [f, setF] = useState(existing
+    ? { name: existing.name, dose: existing.dose || '', notes: existing.notes || '', taken_at: toLocalInput(existing.taken_at) }
+    : { dose: med?.dose || '', taken_at: localNow() })
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.value }))
@@ -122,13 +134,20 @@ export function DoseSheet({ profile, meds, med, onClose, onSaved }) {
     if (at > new Date(Date.now() + 5 * 60000)) { setErr('That time is in the future.'); return }
     setBusy(true); setErr('')
     try {
-      await logDose(profile.id, { medication_id: pick?.id, name, dose: f.dose, notes: f.notes, taken_at: at })
+      if (existing) {
+        const { error } = await supabase.from('med_doses').update({
+          medication_id: pick?.id || null, name, dose: f.dose?.trim() || null, notes: f.notes?.trim() || null, taken_at: at.toISOString(),
+        }).eq('id', existing.id).eq('profile_id', profile.id)
+        if (error) throw error
+      } else {
+        await logDose(profile.id, { medication_id: pick?.id, name, dose: f.dose, notes: f.notes, taken_at: at })
+      }
       onSaved?.(); onClose()
     } catch (x) { setErr(x.message || 'Couldn’t save.') } finally { setBusy(false) }
   }
 
   return (
-    <Sheet title={pick ? `Took ${pick.name}` : 'Medicine taken'} onClose={onClose} onSubmit={submit} busy={busy} err={err}>
+    <Sheet title={existing ? 'Edit medicine taken' : pick ? `Took ${pick.name}` : 'Medicine taken'} onClose={onClose} onSubmit={submit} busy={busy} err={err}>
       {!med && (
         <label className="field"><span>Which one?</span>
           <div className="chips">

@@ -5,6 +5,8 @@ import {
 } from '../lib/entries'
 import { sha256, logEvent, loadHistory } from '../lib/audit'
 import { supabase } from '../lib/supabase'
+import SwipeRow from '../components/SwipeRow'
+import { canEdit } from '../components/QuickLog'
 import Activity from '../components/Activity'
 import { medLine } from '../lib/meds'
 
@@ -69,7 +71,7 @@ function findDuplicates(entries) {
   return dups
 }
 
-export default function Logbook({ entries, days, profile, medications = [], onChanged }) {
+export default function Logbook({ entries, days, profile, medications = [], onChanged, onEdit }) {
   const hasHead = entries.some(isHeadache)
   const kinds = Object.keys(KINDS).filter((k) => entries.some((e) => e.kind === k))
   const [kind, setKind] = useState('all')
@@ -133,20 +135,12 @@ export default function Logbook({ entries, days, profile, medications = [], onCh
   // Removing an entry (WG-PLAN-HEALTH-002, workstream 11: a delete is hidden,
   // kept in the history, never erased). The database copies the entry into
   // entry_history before it goes (migration 0003), and the printed record
-  // lists it under "Changes after recording" as Removed. Two taps: Remove,
-  // then Remove for sure.
+  // lists it under "Changes after recording" as Removed. Swipe left and tap
+  // Remove, or tap the entry, Remove, Remove for sure (SwipeRow).
   const dups = useMemo(() => findDuplicates(entries), [entries])
-  const [picked, setPicked] = useState(null) // entry id showing its actions
-  const [sure, setSure] = useState(false)
-  const [removing, setRemoving] = useState(false)
-  const [removeErr, setRemoveErr] = useState('')
-  const pick = (id) => { setPicked(picked === id ? null : id); setSure(false); setRemoveErr('') }
   async function remove(e) {
-    setRemoving(true); setRemoveErr('')
     const { error } = await supabase.from(e.kind).delete().eq('id', e.raw.id).eq('profile_id', profile.id)
-    setRemoving(false)
-    if (error) { setRemoveErr(error.message || 'Couldn’t remove it. Check your connection.'); return }
-    setPicked(null); setSure(false)
+    if (error) throw error
     setHistoryKey((k) => k + 1)
     onChanged?.()
   }
@@ -258,27 +252,18 @@ export default function Logbook({ entries, days, profile, medications = [], onCh
                 <h4 className="day-h">{dayName(g)}</h4>
                 <ul className="feed">
                   {g.items.map((e) => (
-                    <li key={e.id} className={picked === e.id ? 'picked' : ''}>
+                    <SwipeRow key={e.id} canEdit={canEdit(e.kind) && Boolean(onEdit)}
+                      onEdit={() => onEdit({ kind: e.kind, row: e.raw })} onRemove={() => remove(e)}>
                       <span className={`feed-ico k-${e.kind}`}><Icon name={KINDS[e.kind].icon} /></span>
-                      <div className="feed-body" role="button" tabIndex={0} aria-expanded={picked === e.id}
-                        onClick={() => pick(e.id)} onKeyDown={(ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); pick(e.id) } }}>
+                      <div className="feed-body">
                         <div className="feed-title">{e.title}{e.stats && <span className="feed-stats"> · {e.stats}</span>}</div>
                         {e.detail && <div className="feed-detail">{e.detail}</div>}
                         {e.late && <div className="feed-late">Entered later · {fmtStamp(e.recorded)}</div>}
                         {e.edited && <div className="feed-late">Edited · {fmtStamp(e.edited)}</div>}
                         {dups.has(e.id) && <div className="feed-dup">Looks like a duplicate</div>}
-                        {picked === e.id && (
-                          <div className="feed-actions" onClick={(ev) => ev.stopPropagation()}>
-                            {!sure
-                              ? <button type="button" className="chip" onClick={() => setSure(true)}>Remove</button>
-                              : <button type="button" className="chip remove" disabled={removing} onClick={() => remove(e)}>{removing ? 'Removing…' : 'Remove for sure'}</button>}
-                            <span className="note-inline">It stays in your record’s change history.</span>
-                            {removeErr && <p className="err">{removeErr}</p>}
-                          </div>
-                        )}
                       </div>
                       <time className="feed-time">{entryClock(e)}</time>
-                    </li>
+                    </SwipeRow>
                   ))}
                 </ul>
               </section>

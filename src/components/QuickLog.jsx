@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
 import PaperNotes from './PaperNotes'
@@ -63,11 +63,20 @@ const SHEETS = {
   symptom: 'Log a symptom',
 }
 
-export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpenChange, onTalk, onPicture }) {
+// Editing from the Logbook (swipe right or tap Edit): which form opens for
+// each kind of entry, and how a saved row fills it. Saving updates the row;
+// the database keeps the earlier version in the change history and marks
+// the entry edited (migration 0003).
+const EDIT_SHEET = { meals: 'meal', vitals: 'vitals', exercise: 'exercise', symptoms: 'symptom', med_doses: 'dose' }
+export const canEdit = (kind) => Boolean(EDIT_SHEET[kind])
+const asText = (row) => Object.fromEntries(Object.entries(row).map(([k, v]) => [k, v == null ? '' : v]))
+
+export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpenChange, onTalk, onPicture, editEntry, onEditDone }) {
   const [openInner, setOpenInner] = useState(null) // 'meal' | 'vitals' | 'exercise' | 'symptom' | 'dose'
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [form, setForm] = useState({})
+  const [editing, setEditing] = useState(null) // { kind, row } while editing a saved entry
   const fileRef = useRef(null)
 
   // Dashboard can drive the sheet from its "→ log a weigh-in" links; when it
@@ -75,8 +84,18 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   const open = openKind !== undefined ? openKind : openInner
   const setOpen = (k) => { setOpenInner(k); onOpenChange?.(k) }
 
-  function openSheet(kind) { setForm(kind === 'symptom' ? { felt_at: localNow() } : {}); setErr(''); setOpen(kind) }
-  function close() { setOpen(null) }
+  function openSheet(kind) { setEditing(null); setForm(kind === 'symptom' ? { felt_at: localNow() } : {}); setErr(''); setOpen(kind) }
+  function close() { setOpen(null); if (editing) { setEditing(null); onEditDone?.() } }
+
+  useEffect(() => {
+    if (!editEntry || !EDIT_SHEET[editEntry.kind]) return
+    const row = editEntry.row
+    setEditing(editEntry); setErr('')
+    if (editEntry.kind === 'symptoms') setForm({ ...asText(row), felt_at: toLocalInput(row.felt_at), details: [] })
+    else setForm(asText(row))
+    setOpen(EDIT_SHEET[editEntry.kind])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editEntry])
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
   // Any photo goes to Sparky. No `capture` attribute on the input, so phones
@@ -89,7 +108,9 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
 
   async function save(table, row) {
     setBusy(true); setErr('')
-    const { error } = await supabase.from(table).insert({ ...row, profile_id: profile.id })
+    const { error } = editing
+      ? await supabase.from(table).update(row).eq('id', editing.row.id).eq('profile_id', profile.id)
+      : await supabase.from(table).insert({ ...row, profile_id: profile.id })
     setBusy(false)
     if (error) { setErr(error.message); return }
     close()
@@ -101,6 +122,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   // even if the save then fails. With no connection the reading waits on the
   // phone and saves later.
   async function saveReading(row) {
+    if (editing) { checkReading({ ...row, taken_at: editing.row.taken_at }); return save('vitals', row) }
     checkReading(row)
     setBusy(true); setErr('')
     const r = await saveVitals(profile.id, row)
@@ -210,13 +232,15 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
       )}
 
       {open === 'dose' && (
-        <DoseSheet profile={profile} meds={meds} onClose={close} onSaved={() => onLogged?.()} />
+        <DoseSheet profile={profile} meds={meds} existing={editing?.kind === 'med_doses' ? editing.row : null}
+          onClose={close} onSaved={() => onLogged?.()} />
       )}
 
       {open && !OWN_SHEETS.includes(open) && (
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
-            <h3>{SHEETS[open]}</h3>
+            <h3>{editing ? SHEETS[open].replace(/^Log (a |an )?/, 'Edit ') : SHEETS[open]}</h3>
+            {editing && <p className="note" style={{ marginTop: -8 }}>The earlier version stays in your record’s change history.</p>}
 
             {open === 'choose' && (
               <div className="choose">
@@ -379,6 +403,13 @@ function Field({ label, children }) {
 // Now, formatted for a datetime-local input (local time, no seconds).
 function localNow() {
   const d = new Date()
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 16)
+}
+
+// A saved moment, as a datetime-local value in the phone's time.
+function toLocalInput(iso) {
+  const d = new Date(iso)
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
   return d.toISOString().slice(0, 16)
 }

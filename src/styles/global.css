@@ -866,9 +866,20 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .offline-note b { color: var(--ink); }
 
 /* ── removing an entry (Logbook): tap an entry, Remove, Remove for sure ──── */
-.feed-body[role="button"] { cursor: pointer; border-radius: 8px; }
-.feed-body[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
-.feed li.picked { background: var(--surface-2); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 10px; }
+/* Swipe (SwipeRow): the row slides over a Remove (right) or Edit (left)
+   button. touch-action keeps vertical scrolling with the page. */
+.feed li.swipe { display: block; position: relative; padding: 0; overflow: hidden; }
+.swipe-under { position: absolute; inset: 0; display: flex; justify-content: space-between; align-items: stretch; }
+.swipe-under button { width: 96px; border: 0; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer; }
+.swipe-remove { background: var(--crit); color: #fff; }
+.swipe-edit { background: var(--accent); color: var(--accent-ink); }
+.swipe-row { position: relative; background: var(--surface); padding: 11px 0; touch-action: pan-y; transition: transform .18s ease; }
+.swipe-row.dragging { transition: none; }
+.swipe-tap { display: flex; gap: 12px; align-items: flex-start; cursor: pointer; border-radius: 8px; }
+.swipe-tap:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.feed li.swipe.picked .swipe-row { background: var(--surface-2); padding-left: 10px; padding-right: 10px; border-radius: 10px; }
+@media (prefers-color-scheme: dark) { .swipe-remove { color: #0A264C; } }
+@media (prefers-reduced-motion: reduce) { .swipe-row { transition: none; } }
 .feed-dup { color: var(--gold-text); font-size: 12px; margin-top: 3px; font-weight: 600; }
 .feed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; }
 .chip.remove { background: var(--crit); border-color: var(--crit); color: #fff; font-weight: 600; }
