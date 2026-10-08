@@ -3,6 +3,8 @@ import Card from './Card'
 import { addMed, stopMed, logDose, isCurrent, medLine, today } from '../lib/meds'
 import { supabase } from '../lib/supabase'
 import { fmtDay, fmtTime } from '../lib/entries'
+import { syncMeds } from '../lib/refLibrary'
+import LabelSheet from './LabelSheet'
 
 // The Overview card: what you take, "Took it" beside each, and the last dose.
 // The sheets are exported so the Add-manually menu opens the same forms.
@@ -27,6 +29,7 @@ export default function Medications({ profile, meds, doses, onChanged }) {
                   <div className="med-name">{m.name}</div>
                   {medLine(m) && <div className="med-line">{medLine(m)}</div>}
                   {last && <div className="med-last">Last taken {fmtDay(last.taken_at, { weekday: 'short', month: 'short', day: 'numeric' })}, {fmtTime(last.taken_at)}</div>}
+                  <button type="button" className="link-btn med-label" onClick={() => setSheet({ kind: 'label', med: m })}>FDA label</button>
                 </div>
                 <button type="button" className="chip took" onClick={() => setSheet({ kind: 'dose', med: m })}>Took it</button>
               </li>
@@ -41,6 +44,7 @@ export default function Medications({ profile, meds, doses, onChanged }) {
 
       {sheet?.kind === 'add' && <AddMedSheet profile={profile} onClose={() => setSheet(null)} onSaved={onChanged} />}
       {sheet?.kind === 'dose' && <DoseSheet profile={profile} meds={meds} med={sheet.med} onClose={() => setSheet(null)} onSaved={onChanged} />}
+      {sheet?.kind === 'label' && <LabelSheet med={sheet.med} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'stop' && <StopSheet profile={profile} meds={current} onClose={() => setSheet(null)} onSaved={onChanged} />}
     </Card>
   )
@@ -86,7 +90,7 @@ export function AddMedSheet({ profile, onClose, onSaved }) {
     e.preventDefault()
     if (!f.name?.trim()) { setErr('What is the medicine called?'); return }
     setBusy(true); setErr('')
-    try { await addMed(profile.id, f); onSaved?.(); onClose() } catch (x) { setErr(x.message || 'Couldn’t save.') } finally { setBusy(false) }
+    try { await addMed(profile.id, f); syncMeds(); onSaved?.(); onClose() } catch (x) { setErr(x.message || 'Couldn’t save.') } finally { setBusy(false) }
   }
 
   return (
