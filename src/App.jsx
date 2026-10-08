@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard'
 import SetPassword from './pages/SetPassword'
 import UpdateBanner from './components/UpdateBanner'
 import CrisisCard from './components/CrisisCard'
+import SafetyAlert from './components/SafetyAlert'
 
 function Gate() {
   const { session, profile, recovery } = useAuth()
@@ -24,6 +25,7 @@ export default function App() {
     <AuthProvider>
       <UpdateBanner />
       <Gate />
+      <SafetyAlert />
       <CrisisCard />
     </AuthProvider>
   )

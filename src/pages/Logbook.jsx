@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Icon from '../lib/icons'
 import {
-  KINDS, entryTime, entryClock, isHeadache, toCSV, download, slug, dayKey, fmtDay, fmtTime, fmtStamp, describe,
+  KINDS, entryTime, entryClock, isHeadache, isPregnancyEntry, toCSV, download, slug, dayKey, fmtDay, fmtTime, fmtStamp, describe,
 } from '../lib/entries'
 import { sha256, logEvent, loadHistory } from '../lib/audit'
 import Activity from '../components/Activity'
@@ -62,6 +62,8 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
   // Mental health entries stay out of exports unless the person includes them
   // (or filters to them on purpose). The screen always shows everything.
   const [includeMind, setIncludeMind] = useState(false)
+  // Pregnancy entries likewise (WG-PLAN-HEALTH-002, workstream 9: privacy).
+  const [includePreg, setIncludePreg] = useState(false)
 
   const headOnly = kind === 'headaches'
   const shown = useMemo(() => {
@@ -75,15 +77,21 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
   }, [entries, kind, q, headOnly])
 
   const exported = useMemo(
-    () => shown.filter((e) => includeMind || !KINDS[e.kind].mind || kind === e.kind),
-    [shown, includeMind, kind])
-  const mindLeftOut = shown.length - exported.length
+    () => shown.filter((e) => (includeMind || !KINDS[e.kind].mind || kind === e.kind)
+      && (includePreg || !isPregnancyEntry(e) || kind === 'pregnancy_events')),
+    [shown, includeMind, includePreg, kind])
+  const mindLeftOut = shown.filter((e) => KINDS[e.kind].mind && !includeMind && kind !== e.kind).length
+  // Filtering to Symptoms doesn't include pregnancy symptoms; only choosing
+  // Pregnancy (or ticking the box) does.
+  const pregLeftOut = shown.filter((e) => isPregnancyEntry(e) && !includePreg && kind !== 'pregnancy_events').length
   const hasMind = entries.some((e) => KINDS[e.kind].mind)
+  const hasPreg = entries.some(isPregnancyEntry)
 
   const filterText = [
     headOnly ? 'headaches and migraines' : kind === 'all' ? 'all entries' : KINDS[kind].label.toLowerCase(),
     q.trim() && `containing “${q.trim()}”`,
     mindLeftOut > 0 && 'mental health questionnaires and meditation left out',
+    pregLeftOut > 0 && 'pregnancy entries left out',
   ].filter(Boolean).join(' ')
   const from = new Date(Date.now() - (days - 1) * 86400000)
   const period = `${fmtDay(from, { month: 'long', day: 'numeric', year: 'numeric' })} – ${fmtDay(new Date(), { month: 'long', day: 'numeric', year: 'numeric' })}`
@@ -182,6 +190,12 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
               <label className="mind-toggle">
                 <input type="checkbox" checked={includeMind} onChange={(e) => setIncludeMind(e.target.checked)} />
                 Include mental health questionnaires and meditation{mindLeftOut > 0 ? ` (${mindLeftOut} left out)` : ''}
+              </label>
+            )}
+            {hasPreg && (
+              <label className="mind-toggle">
+                <input type="checkbox" checked={includePreg} onChange={(e) => setIncludePreg(e.target.checked)} />
+                Include pregnancy entries{pregLeftOut > 0 ? ` (${pregLeftOut} left out)` : ''}
               </label>
             )}
             <div className="actions">

@@ -14,6 +14,8 @@ import Medications from '../components/Medications'
 import SparkyChat from '../components/SparkyChat'
 import Settings from '../components/Settings'
 import MindCard from '../components/MindCard'
+import Pregnancy from '../components/Pregnancy'
+import { flushOutbox } from '../lib/pregnancy'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
 import { KINDS, toEntries, dayKey, fmtDay, fmtTime, entryClock, isHeadache } from '../lib/entries'
@@ -56,6 +58,15 @@ export default function Dashboard() {
   useEffect(() => {
     try { localStorage.setItem('lb_view', JSON.stringify({ range, view })) } catch { /* private mode */ }
   }, [range, view])
+
+  // Readings kept on the phone while offline go up when the connection is back.
+  useEffect(() => {
+    const send = () => flushOutbox().then((n) => { if (n) logs.refresh() })
+    send()
+    window.addEventListener('online', send)
+    return () => window.removeEventListener('online', send)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const all = useMemo(() => toEntries(logs), [logs])
   const from = useMemo(() => { const d = new Date(Date.now() - (range - 1) * DAY); d.setHours(0, 0, 0, 0); return d }, [range])
@@ -192,6 +203,7 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
   const recent = entries.slice(0, 4)
 
   const meds = <Medications profile={profile} meds={logs.medications} doses={logs.med_doses} onChanged={logs.refresh} />
+  const pregnancy = <Pregnancy profile={profile} onChanged={logs.refresh} />
 
   if (!all.length) {
     return (
@@ -201,6 +213,7 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
           <h2>Welcome, {profile.display_name}</h2>
           <p>Nothing logged yet. Snap a photo of your next meal, tap the mic to tell Sparky how you feel, or add the medicines you take below.</p>
         </div>
+        {pregnancy}
         {meds}
       </div>
     )
@@ -228,6 +241,8 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
           {(logs.daily_checkins || []).some((c) => c.day === todayK) ? 'Update today’s check-in' : 'Check in for today: sleep, mood, drinks'}
         </button>
       </div>
+
+      {pregnancy}
 
       {tiles.length > 0 && (
         <div className="tiles">

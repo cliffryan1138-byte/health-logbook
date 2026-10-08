@@ -6,12 +6,12 @@ import { daysAgo } from '../lib/stats'
 // RLS scopes rows server-side; no profile_id filter needed, but we pass it
 // anyway so the query planner uses the (profile_id, time) index.
 export function useLogs(profileId, days = 14) {
-  const [logs, setLogs] = useState({ meals: [], vitals: [], exercise: [], symptoms: [], med_doses: [], daily_checkins: [], assessments: [], meditations: [], medications: [], loading: true })
+  const [logs, setLogs] = useState({ meals: [], vitals: [], exercise: [], symptoms: [], med_doses: [], daily_checkins: [], assessments: [], meditations: [], pregnancy_events: [], medications: [], loading: true })
 
   const refresh = useCallback(async () => {
     if (!profileId) return
     const since = daysAgo(days)
-    const [meals, vitals, exercise, symptoms, doses, checkins, assessments, meditations, meds] = await Promise.all([
+    const [meals, vitals, exercise, symptoms, doses, checkins, assessments, meditations, pregnancyEvents, meds] = await Promise.all([
       supabase.from('meals').select('*').eq('profile_id', profileId).gte('eaten_at', since).order('eaten_at'),
       supabase.from('vitals').select('*').eq('profile_id', profileId).gte('taken_at', since).order('taken_at'),
       supabase.from('exercise').select('*').eq('profile_id', profileId).gte('done_at', since).order('done_at'),
@@ -20,6 +20,7 @@ export function useLogs(profileId, days = 14) {
       supabase.from('daily_checkins').select('*').eq('profile_id', profileId).gte('day', since.slice(0, 10)).order('day'),
       supabase.from('assessments').select('*').eq('profile_id', profileId).gte('taken_at', since).order('taken_at'),
       supabase.from('meditations').select('*').eq('profile_id', profileId).gte('done_at', since).order('done_at'),
+      supabase.from('pregnancy_events').select('*').eq('profile_id', profileId).gte('at', since).lte('at', new Date().toISOString()).order('at'),
       // The whole medication list, stopped ones included: it's short, and the
       // printed record lists what was taken over the period.
       supabase.from('medications').select('*').eq('profile_id', profileId).order('name'),
@@ -33,6 +34,7 @@ export function useLogs(profileId, days = 14) {
       daily_checkins: checkins.data ?? [],
       assessments: assessments.data ?? [],
       meditations: meditations.data ?? [],
+      pregnancy_events: pregnancyEvents.data ?? [],
       medications: meds.data ?? [],
       loading: false,
     })

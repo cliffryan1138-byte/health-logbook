@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Card from './Card'
 import { dayKey, fmtDay } from '../lib/entries'
 import { glucoseByContext, fmt } from '../lib/stats'
+import { vitalsFlag } from '../lib/pregnancy'
 
 // One chart with tabs instead of a wall of cards: whichever measures the person
 // actually logs. A day with nothing logged is a gap in the chart, never a zero.
@@ -13,6 +14,10 @@ const METRICS = [
   { k: 'Protein', table: 'meals', f: 'protein_g', time: 'eaten_at', how: 'sum', kind: 'bar', unit: 'g', dp: 0, target: 'protein_g' },
   { k: 'Sleep', table: 'vitals', f: 'sleep_hr', time: 'taken_at', how: 'avg', kind: 'bar', unit: 'hr', dp: 1 },
   { k: 'Blood sugar', table: 'vitals', f: 'glucose_mgdl', time: 'taken_at', how: 'avg', kind: 'line', unit: 'mg/dL', dp: 0 },
+  // The day's highest top number, so one high reading is never averaged away.
+  // During pregnancy and the year after, readings at ACOG's thresholds are
+  // marked (lib/pregnancy.js).
+  { k: 'Blood pressure', table: 'vitals', f: 'bp_systolic', time: 'taken_at', how: 'max', kind: 'line', unit: 'mmHg (top)', dp: 0, flags: true },
   { k: 'Activity', table: 'exercise', f: 'duration_min', time: 'done_at', how: 'sum', kind: 'bar', unit: 'min', dp: 0 },
 ]
 const CONTEXT_LABEL = {
@@ -39,18 +44,23 @@ export default function TrendChart({ logs, days, targets }) {
 
   const series = useMemo(() => {
     if (!m) return []
-    const byDay = new Map()
+    const byDay = new Map(), flagDay = new Map()
     for (const r of logs[m.table]) {
       if (r[m.f] == null) continue
       const k = dayKey(r[m.time])
       byDay.set(k, [...(byDay.get(k) || []), Number(r[m.f])])
+      if (m.flags) {
+        const f = vitalsFlag(r)
+        if (f && flagDay.get(k) !== 'severe') flagDay.set(k, f)
+      }
     }
     const out = []
     const today = new Date(); today.setHours(12, 0, 0, 0)
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date(today.getTime() - i * 86400000)
       const v = byDay.get(dayKey(d))
-      out.push({ d, v: v ? (m.how === 'sum' ? v.reduce((a, b) => a + b, 0) : v.reduce((a, b) => a + b, 0) / v.length) : null })
+      const val = !v ? null : m.how === 'sum' ? v.reduce((a, b) => a + b, 0) : m.how === 'max' ? Math.max(...v) : v.reduce((a, b) => a + b, 0) / v.length
+      out.push({ d, v: val, flag: flagDay.get(dayKey(d)) || null })
     }
     return out
   }, [logs, m, days])
@@ -72,7 +82,7 @@ export default function TrendChart({ logs, days, targets }) {
   const ticks = []
   for (let v = lo; v <= hi + 1e-9; v += step) ticks.push(v)
   const xl = [...new Set([0, Math.floor((series.length - 1) / 2), series.length - 1])]
-  const pts = series.map((p, i) => (p.v == null ? null : [x(i), y(p.v)])).filter(Boolean)
+  const pts = series.map((p, i) => (p.v == null ? null : [x(i), y(p.v), p.flag])).filter(Boolean)
   const bw = Math.max(2, Math.min(24, (iw / series.length) * 0.66)), br = Math.min(4, bw / 2)
   const hp = hover != null ? series[hover] : null
 
@@ -114,8 +124,11 @@ export default function TrendChart({ logs, days, targets }) {
                 return <path key={i} className="bar" d={`M${cx},${base}V${Math.min(base, top + br)}Q${cx},${top} ${cx + br},${top}H${cx + bw - br}Q${cx + bw},${top} ${cx + bw},${Math.min(base, top + br)}V${base}Z`} />
               })
               : <>
-                {pts.length > 1 && <path className="line" d={`M${pts.map((p) => p.join(',')).join('L')}`} />}
-                {(pts.length <= 40 ? pts : pts.slice(-1)).map((p, i) => <circle key={i} className="pt" cx={p[0]} cy={p[1]} r="4" />)}
+                {pts.length > 1 && <path className="line" d={`M${pts.map((p) => `${p[0]},${p[1]}`).join('L')}`} />}
+                {/* Flagged readings are always drawn, however many days are shown. */}
+                {pts.filter((p, i) => p[2] || pts.length <= 40 || i === pts.length - 1).map((p, i) => (
+                  <circle key={i} className={`pt${p[2] ? ` flag ${p[2]}` : ''}`} cx={p[0]} cy={p[1]} r={p[2] ? 5.5 : 4} />
+                ))}
               </>}
             {target != null && (
               <g>
@@ -130,6 +143,7 @@ export default function TrendChart({ logs, days, targets }) {
         {hp && (
           <div className="tip" style={{ left: Math.max(70, Math.min(width - 70, x(hover))), top: hp.v == null ? P.t + ih / 2 : y(hp.v) }}>
             {fmtDay(hp.d)} · <b>{hp.v == null ? 'not logged' : `${fmt(hp.v, m.dp)} ${m.unit}`}</b>
+            {hp.flag && <> · {hp.flag === 'severe' ? 'severe range' : 'high'} for pregnancy</>}
           </div>
         )}
       </div>
@@ -152,7 +166,7 @@ export default function TrendChart({ logs, days, targets }) {
           <thead><tr><th>Date</th><th>{m.k} ({m.unit})</th></tr></thead>
           <tbody>
             {[...series].reverse().filter((p) => p.v != null).map((p) => (
-              <tr key={p.d.getTime()}><td>{fmtDay(p.d)}</td><td>{fmt(p.v, m.dp)}</td></tr>
+              <tr key={p.d.getTime()}><td>{fmtDay(p.d)}</td><td>{fmt(p.v, m.dp)}{p.flag ? ` · ${p.flag === 'severe' ? 'severe range' : 'high'} for pregnancy` : ''}</td></tr>
             ))}
           </tbody>
         </table>
