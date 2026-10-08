@@ -51,6 +51,8 @@ export default function Dashboard() {
   const fetchDays = Math.max(range, 35)
   const logs = useLogs(profile.id, fetchDays)
   const [logKind, setLogKind] = useState(null)
+  // A saved entry being edited from the Logbook ({ kind, row }); QuickLog opens its form.
+  const [editEntry, setEditEntry] = useState(null)
   // null = closed; 'type', 'talk' (starts the mic straight away), or
   // { photo: File } from "Take a picture" (Sparky reads it straight away).
   const [chat, setChat] = useState(null)
@@ -111,7 +113,7 @@ export default function Dashboard() {
           <WorkoutHistory profile={profile} key={workoutsSaved} />
         </div>
       ) : view === 'logbook' ? (
-        <Logbook entries={entries} days={range} profile={profile} medications={logs.medications} />
+        <Logbook entries={entries} days={range} profile={profile} medications={logs.medications} onChanged={logs.refresh} onEdit={setEditEntry} />
       ) : (
         <Overview
           profile={profile}
@@ -134,7 +136,8 @@ export default function Dashboard() {
 
       <div className="screen-only">
         <QuickLog profile={profile} meds={logs.medications} onLogged={logs.refresh} openKind={logKind} onOpenChange={setLogKind}
-          onTalk={() => setChat('talk')} onPicture={(photo) => setChat({ photo })} />
+          onTalk={() => setChat('talk')} onPicture={(photo) => setChat({ photo })}
+          editEntry={editEntry} onEditDone={() => setEditEntry(null)} />
         {chat && (
           <SparkyChat profile={profile} meds={logs.medications} onLogged={logs.refresh}
             listenFirst={chat === 'talk'} firstPhoto={chat.photo} onClose={() => setChat(null)} />
