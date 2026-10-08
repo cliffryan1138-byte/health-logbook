@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { fmtDay, fmtTime } from '../lib/entries'
 import { syncMeds } from '../lib/refLibrary'
 import LabelSheet from './LabelSheet'
+import MedReport from './MedReport'
 
 // The Overview card: what you take, "Took it" beside each, and the last dose.
 // The sheets are exported so the Add-manually menu opens the same forms.
@@ -43,11 +44,13 @@ export default function Medications({ profile, meds, doses, onChanged }) {
       <div className="plan-links med-links">
         <button type="button" className="link-btn" onClick={() => setSheet({ kind: 'add' })}>+ Add a medicine</button>
         {current.length > 0 && <button type="button" className="link-btn" onClick={() => setSheet({ kind: 'stop' })}>Stopped taking one</button>}
+        {current.length > 0 && <button type="button" className="link-btn" onClick={() => setSheet({ kind: 'report' })}>My medicines report</button>}
       </div>
 
       {sheet?.kind === 'add' && <AddMedSheet profile={profile} onClose={() => setSheet(null)} onSaved={onChanged} />}
       {sheet?.kind === 'edit' && <AddMedSheet profile={profile} existing={sheet.med} onClose={() => setSheet(null)} onSaved={onChanged} />}
       {sheet?.kind === 'dose' && <DoseSheet profile={profile} meds={meds} med={sheet.med} onClose={() => setSheet(null)} onSaved={onChanged} />}
+      {sheet?.kind === 'report' && <MedReport profile={profile} meds={meds} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'label' && <LabelSheet med={sheet.med} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'stop' && <StopSheet profile={profile} meds={current} onClose={() => setSheet(null)} onSaved={onChanged} />}
     </Card>
