@@ -95,7 +95,7 @@ export default function Workouts({ profile, onLogged }) {
         <div className="card empty-state">
           <img src="/sparky.png" alt="" width="96" height="96" />
           <h2>No training plan yet</h2>
-          <p>Load your plan from a PDF or a photo and Sparky sets up each day for you, or build one yourself.
+          <p>Start from a ready-made plan, load yours from a PDF or a photo and Sparky sets up each day for you, or build one yourself.
             Then every workout is one tap per set.</p>
           {err && <p className="err">{err}</p>}
           <div className="actions" style={{ maxWidth: 360, margin: '16px auto 0' }}>
@@ -192,6 +192,7 @@ export default function Workouts({ profile, onLogged }) {
           {week && <span className="focus">Week {week}{plan.weeks ? ` of ${plan.weeks}` : ''}</span>}
         </div>
         {weekNote && <p className="hero-today">{weekNote}</p>}
+        {plan.source === 'library' && plan.description && <p className="note" style={{ margin: '6px 0 0' }}>{plan.description}</p>}
         {!week && plan.started_on && <p className="hero-today">Starts {new Date(`${plan.started_on}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}.</p>}
         {saved && <p className="saved-note">✓ {saved}</p>}
       </div>
@@ -211,6 +212,7 @@ export default function Workouts({ profile, onLogged }) {
             <>
               <h3 className="day-title">{activeDay.title}</h3>
               {activeDay.focus && <p className="note" style={{ marginTop: 0 }}>{activeDay.focus}</p>}
+              {activeDay.notes && <p className="note day-notes">{activeDay.notes}</p>}
               <ol className="day-preview">
                 {activeDay.exercises.map((x) => (
                   <li key={x.id}><b>{x.name}</b> <span>{[x.sets && `${x.sets} ×`, x.reps].filter(Boolean).join(' ')}</span></li>
@@ -227,6 +229,7 @@ export default function Workouts({ profile, onLogged }) {
           <div className="card session-head">
             <div>
               <h3>{activeDay.title}</h3>
+              {activeDay.notes && <details className="ex-cues"><summary>Day notes</summary><p>{activeDay.notes}</p></details>}
               <p className="note" style={{ margin: 0 }}>{doneSets} of {totalSets} sets · started {new Date(session.startedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}</p>
             </div>
             <div className="progress" aria-hidden="true"><i style={{ width: `${totalSets ? (100 * doneSets) / totalSets : 0}%` }} /></div>
