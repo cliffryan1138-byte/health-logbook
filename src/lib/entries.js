@@ -71,7 +71,8 @@ export function describe(kind, r) {
   if (kind === 'exercise') {
     return {
       title: r.activity,
-      stats: [r.duration_min != null && `${n(r.duration_min)} min`, r.intensity].filter(Boolean).join(' · '),
+      stats: [r.distance_m != null && `${(r.distance_m / 1609.344).toFixed(2)} mi`, r.duration_min != null && `${n(r.duration_min)} min`,
+        r.pack_lb != null && `${n(r.pack_lb)} lb pack`, r.intensity].filter(Boolean).join(' · '),
       detail: r.notes || '',
     }
   }

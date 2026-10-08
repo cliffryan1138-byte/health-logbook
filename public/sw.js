@@ -10,9 +10,11 @@
 //                          So a new deploy is picked up as soon as the phone
 //                          is online, and the "new version" banner still
 //                          compares against the live page.
-//   /assets/*              saved after the first load. Vite puts a hash in
-//                          every file name, so a saved copy never goes stale;
-//                          files the current page no longer uses are dropped.
+//   /assets/*              saved after the first load, including the parts
+//                          the app loads only when needed (the route map).
+//                          Vite puts a hash in every file name, so a saved copy
+//                          never goes stale; files the current page no longer
+//                          uses are dropped.
 //   icons, manifest        served from the copy, refreshed in the background.
 //
 // The file name never changes, and it doesn't need to: it reads the asset
@@ -22,17 +24,30 @@ const CACHE = 'daybook-app'
 const SHELL = ['/', '/manifest.webmanifest', '/sparky.png', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon-64.png']
 const ASSET = /\/assets\/[^"' )]+\.(?:js|css)/g
 
-// Save a page and every asset it names; drop assets it no longer names.
+// Save a page and every asset it names, and the assets those name in turn
+// (parts of the app loaded only when needed, like the route map); drop assets
+// no longer named.
+const CHUNK = /(?:assets\/|\.\/)([A-Za-z0-9_.-]+-[A-Za-z0-9_-]{8}\.(?:js|css))/g
 async function keepPage(res) {
   const cache = await caches.open(CACHE)
   const html = await res.clone().text()
   const wanted = new Set(html.match(ASSET) || [])
   await cache.put('/', res)
-  await Promise.all([...wanted].map(async (path) => {
-    if (await cache.match(path)) return
-    const r = await fetch(path)
-    if (r.ok) await cache.put(path, r)
-  }))
+  const queue = [...wanted]
+  while (queue.length) {
+    const path = queue.shift()
+    let r = await cache.match(path)
+    if (!r) {
+      r = await fetch(path)
+      if (!r.ok) continue
+      await cache.put(path, r.clone())
+    }
+    if (!path.endsWith('.js')) continue
+    for (const m of (await r.text()).matchAll(CHUNK)) {
+      const more = `/assets/${m[1]}`
+      if (!wanted.has(more)) { wanted.add(more); queue.push(more) }
+    }
+  }
   for (const req of await cache.keys()) {
     const path = new URL(req.url).pathname
     if (path.startsWith('/assets/') && !wanted.has(path)) await cache.delete(req)
