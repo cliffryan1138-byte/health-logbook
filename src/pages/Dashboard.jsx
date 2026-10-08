@@ -16,6 +16,7 @@ import Settings from '../components/Settings'
 import MindCard from '../components/MindCard'
 import Pregnancy from '../components/Pregnancy'
 import { flushOutbox } from '../lib/pregnancy'
+import OfflineNote from '../components/OfflineNote'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
 import { KINDS, toEntries, dayKey, fmtDay, fmtTime, entryClock, isHeadache } from '../lib/entries'
@@ -82,6 +83,8 @@ export default function Dashboard() {
         <button className="signout" onClick={() => setSettings(true)}>Settings</button>
         <button className="signout" onClick={signOut}>Sign out</button>
       </header>
+
+      <OfflineNote />
 
       <div className="viewbar screen-only">
         <div className="seg" role="tablist" aria-label="View">

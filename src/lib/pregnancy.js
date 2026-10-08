@@ -29,7 +29,12 @@ export async function loadPregnancy(profileId) {
       .in('status', ['pregnant', 'postpartum']).maybeSingle(),
     supabase.from('ref_pregnancy_bp').select('*'),
   ])
-  if (p.error) throw p.error
+  if (p.error) {
+    // Offline: keep using the phone's copy, so the checks keep working.
+    const saved = readCache()
+    if (saved) return { pregnancy: saved.pregnancy, thresholds: saved.thresholds || [], offline: true }
+    throw p.error
+  }
   const thresholds = t.data?.length ? t.data : readCache()?.thresholds || []
   writeCache({ pregnancy: p.data || null, thresholds })
   return { pregnancy: p.data || null, thresholds }

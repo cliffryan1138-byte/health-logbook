@@ -34,11 +34,14 @@ export default function Pregnancy({ profile, onChanged }) {
   const [err, setErr] = useState('')
 
   const refresh = useCallback(async () => {
+    let s
     try {
-      const s = await loadPregnancy(profile.id)
-      setState(s)
-      setEvents(s.pregnancy ? await loadEvents(profile.id, s.pregnancy.id) : [])
-    } catch (e) { setErr(e.message || 'Couldn’t load the pregnancy tracker.'); setState({ pregnancy: null, thresholds: [] }) }
+      s = await loadPregnancy(profile.id)
+      setState(s); setErr('')
+    } catch (e) { setErr(e.message || 'Couldn’t load the pregnancy tracker.'); setState({ pregnancy: null, thresholds: [] }); return }
+    // Kicks, visits and questions need a connection; offline the card still
+    // shows the week and keeps the blood pressure check (from the phone's copy).
+    try { setEvents(s.pregnancy ? await loadEvents(profile.id, s.pregnancy.id) : []) } catch { /* offline */ }
   }, [profile.id])
 
   useEffect(() => { refresh() }, [refresh])

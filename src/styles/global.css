@@ -857,3 +857,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .signs ul ul { margin: 4px 0 0; }
 .signs ul ul li { color: var(--ink-soft); font-size: 14px; margin-bottom: 3px; }
 .safety .src { font-size: 12.5px; color: var(--ink-faint); }
+
+/* ── offline (public/sw.js lets Daybook open with no connection) ───────── */
+.offline-note {
+  margin: 0 0 14px; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.45;
+  background: var(--surface-2); border: 1px solid var(--line-strong); color: var(--ink-soft);
+}
+.offline-note b { color: var(--ink); }
