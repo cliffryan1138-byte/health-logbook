@@ -37,7 +37,8 @@ export default function LabelSheet({ med, onClose }) {
         {state?.status === 'not_matched' && (
           <p className="note">
             Daybook couldn’t match “{med.name}” to a medicine in RxNorm, the National Library of Medicine’s list of medicine names.
-            Check the spelling, or use the name on the bottle or box, for example “sertraline” or “Zoloft”. Daybook doesn’t guess.
+            Daybook doesn’t guess. Tap <b>Edit</b> under the medicine and change the name to the one on the bottle or box,
+            for example “sertraline” or “Zoloft”, then open the FDA label again.
           </p>
         )}
 

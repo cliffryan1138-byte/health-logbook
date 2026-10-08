@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import Card from './Card'
-import { addMed, stopMed, logDose, isCurrent, medLine, today } from '../lib/meds'
+import { addMed, updateMed, stopMed, logDose, isCurrent, medLine, today } from '../lib/meds'
 import { supabase } from '../lib/supabase'
 import { fmtDay, fmtTime } from '../lib/entries'
 import { syncMeds } from '../lib/refLibrary'
@@ -29,7 +29,10 @@ export default function Medications({ profile, meds, doses, onChanged }) {
                   <div className="med-name">{m.name}</div>
                   {medLine(m) && <div className="med-line">{medLine(m)}</div>}
                   {last && <div className="med-last">Last taken {fmtDay(last.taken_at, { weekday: 'short', month: 'short', day: 'numeric' })}, {fmtTime(last.taken_at)}</div>}
-                  <button type="button" className="link-btn med-label" onClick={() => setSheet({ kind: 'label', med: m })}>FDA label</button>
+                  <span className="med-links-row">
+                    <button type="button" className="link-btn med-label" onClick={() => setSheet({ kind: 'label', med: m })}>FDA label</button>
+                    <button type="button" className="link-btn med-label" onClick={() => setSheet({ kind: 'edit', med: m })}>Edit</button>
+                  </span>
                 </div>
                 <button type="button" className="chip took" onClick={() => setSheet({ kind: 'dose', med: m })}>Took it</button>
               </li>
@@ -43,6 +46,7 @@ export default function Medications({ profile, meds, doses, onChanged }) {
       </div>
 
       {sheet?.kind === 'add' && <AddMedSheet profile={profile} onClose={() => setSheet(null)} onSaved={onChanged} />}
+      {sheet?.kind === 'edit' && <AddMedSheet profile={profile} existing={sheet.med} onClose={() => setSheet(null)} onSaved={onChanged} />}
       {sheet?.kind === 'dose' && <DoseSheet profile={profile} meds={meds} med={sheet.med} onClose={() => setSheet(null)} onSaved={onChanged} />}
       {sheet?.kind === 'label' && <LabelSheet med={sheet.med} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'stop' && <StopSheet profile={profile} meds={current} onClose={() => setSheet(null)} onSaved={onChanged} />}
@@ -80,8 +84,11 @@ function toLocalInput(iso) {
   return d.toISOString().slice(0, 16)
 }
 
-export function AddMedSheet({ profile, onClose, onSaved }) {
-  const [f, setF] = useState({ started_on: today() })
+// With `existing`, the same form edits that medicine instead.
+export function AddMedSheet({ profile, existing, onClose, onSaved }) {
+  const [f, setF] = useState(() => (existing
+    ? Object.fromEntries(['name', 'dose', 'schedule', 'as_needed', 'reason', 'started_on', 'notes'].map((k) => [k, existing[k] ?? '']))
+    : { started_on: today() }))
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const set = (k) => (e) => setF((x) => ({ ...x, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }))
@@ -90,13 +97,19 @@ export function AddMedSheet({ profile, onClose, onSaved }) {
     e.preventDefault()
     if (!f.name?.trim()) { setErr('What is the medicine called?'); return }
     setBusy(true); setErr('')
-    try { await addMed(profile.id, f); syncMeds(); onSaved?.(); onClose() } catch (x) { setErr(x.message || 'Couldn’t save.') } finally { setBusy(false) }
+    try {
+      if (existing) { await updateMed(profile.id, existing.id, f); if (f.name.trim() !== existing.name) syncMeds([existing.id]) }
+      else { await addMed(profile.id, f); syncMeds() }
+      onSaved?.(); onClose()
+    } catch (x) { setErr(x.message || 'Couldn’t save.') } finally { setBusy(false) }
   }
 
   return (
-    <Sheet title="Add a medicine" onClose={onClose} onSubmit={submit} busy={busy} err={err}>
+    <Sheet title={existing ? `Edit ${existing.name}` : 'Add a medicine'} onClose={onClose} onSubmit={submit} busy={busy} err={err}>
+      {existing && <p className="note" style={{ marginTop: 0 }}>Fix anything that’s wrong. The earlier version stays in your record’s change history.</p>}
       <label className="field"><span>Name</span>
-        <input value={f.name || ''} onChange={set('name')} placeholder="Sumatriptan, Advil, vitamin D" autoFocus /></label>
+        <input value={f.name || ''} onChange={set('name')} placeholder="Sumatriptan, Advil, vitamin D" autoFocus={!existing} /></label>
+      <p className="note" style={{ margin: '-4px 0 8px' }}>Use the name on the bottle or box, so Daybook can find its FDA label.</p>
       <div className="row2">
         <label className="field"><span>Dose</span>
           <input value={f.dose || ''} onChange={set('dose')} placeholder="50 mg" /></label>

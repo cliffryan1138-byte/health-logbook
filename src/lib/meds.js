@@ -19,9 +19,7 @@ export function medLine(m) {
   return [m.dose, m.as_needed ? 'as needed' : m.schedule, m.reason && `for ${m.reason}`].filter(Boolean).join(' · ')
 }
 
-export async function addMed(profileId, m) {
-  const { data, error } = await supabase.from('medications').insert({
-    profile_id: profileId,
+const medRow = (m) => ({
     name: m.name.trim(),
     dose: m.dose?.trim() || null,
     schedule: m.as_needed ? null : (m.schedule?.trim() || null),
@@ -29,9 +27,19 @@ export async function addMed(profileId, m) {
     reason: m.reason?.trim() || null,
     started_on: m.started_on || null,
     notes: m.notes?.trim() || null,
-  }).select().single()
+})
+
+export async function addMed(profileId, m) {
+  const { data, error } = await supabase.from('medications').insert({ profile_id: profileId, ...medRow(m) }).select().single()
   if (error) throw error
   return data
+}
+
+// Fix a medicine on the list (its name, dose, schedule…). The earlier version
+// stays in the change history (0003 trigger), so a rename is on record.
+export async function updateMed(profileId, id, m) {
+  const { error } = await supabase.from('medications').update(medRow(m)).eq('id', id).eq('profile_id', profileId)
+  if (error) throw error
 }
 
 export async function stopMed(profileId, id) {
