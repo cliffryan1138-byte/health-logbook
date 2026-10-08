@@ -1,4 +1,5 @@
 import { shows } from './items'
+import { cachedPregnancy, inWindow } from './pregnancy'
 
 // The symptom library: anything a man or a woman might have, grouped by body
 // area (WG-PLAN-HEALTH-002, workstream 1). The person picks one, or types
@@ -6,8 +7,9 @@ import { shows } from './items'
 // item (items.js) only shows when that item does; Settings can turn any of
 // them on for anyone.
 //
-// Pregnancy and postpartum symptoms (morning sickness, practice contractions…)
-// arrive with the pregnancy tracker in Phase 2. Until then they can be typed.
+// Pregnancy and postpartum symptoms show while the pregnancy tracker is on
+// (workstream 9). Heartburn, back pain, fatigue and headaches stay in their
+// own groups.
 export const GROUPS = [
   { key: 'general', label: 'General', symptoms: ['Fatigue', 'Fever', 'Chills', 'Night sweats', 'Weight change', 'Loss of appetite'] },
   { key: 'head_nerves', label: 'Head and nerves', symptoms: ['Headache', 'Migraine', 'Dizziness', 'Numbness', 'Tingling', 'Memory or focus trouble', 'Ringing in the ears', 'Fainting'] },
@@ -21,12 +23,14 @@ export const GROUPS = [
   { key: 'female_health', label: 'Female health', item: 'cycle', symptoms: ['Period pain', 'PMS', 'Heavy bleeding', 'Irregular bleeding', 'Discharge', 'Pelvic pain', 'Breast pain'] },
   { key: 'menopause', label: 'Perimenopause and menopause', item: 'menopause', symptoms: ['Hot flash', 'Night sweats', 'Vaginal dryness', 'Cycle changes'] },
   { key: 'male_health', label: 'Men’s health', item: 'mens_health', symptoms: ['Weak urine flow', 'Prostate discomfort', 'Erectile difficulty', 'Testicular pain or lump', 'Low libido'] },
+  { key: 'pregnancy', label: 'Pregnancy and after birth', item: 'pregnancy', tracker: true, symptoms: ['Morning sickness', 'Food aversions', 'Swelling in hands, face or feet', 'Practice contractions', 'Spotting or bleeding', 'Leaking fluid', 'Postpartum bleeding', 'Breastfeeding problems', 'Baby blues'] },
 ]
 
 // The quick picks at the top of the Symptom form, before any searching.
 const COMMON = ['Headache', 'Heartburn', 'Bloating', 'Fatigue', 'Nausea', 'Joint pain', 'Poor sleep', 'Hot flash', 'Period pain']
 
-export const groupsFor = (profile) => GROUPS.filter((g) => !g.item || shows(profile, g.item))
+export const groupsFor = (profile) => GROUPS.filter((g) => (!g.item || shows(profile, g.item))
+  && (!g.tracker || inWindow(cachedPregnancy())))
 
 // Common picks this person can see, each with the group it belongs to.
 export function commonFor(profile) {

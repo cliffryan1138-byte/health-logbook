@@ -8,6 +8,7 @@
 // mark anything written more than a day after the event.
 
 import { FORMS, DIFFICULTY, band } from './questionnaires'
+import { vitalsFlag, threshold, fmtDuration } from './pregnancy'
 
 export const KINDS = {
   meals:    { label: 'Meals',    one: 'Meal',     time: 'eaten_at', icon: 'flame' },
@@ -20,7 +21,13 @@ export const KINDS = {
   // Mental health: left out of exports unless the person includes them.
   assessments: { label: 'Questionnaires', one: 'Questionnaire', time: 'taken_at', icon: 'mind', mind: true },
   meditations: { label: 'Meditation', one: 'Meditation', time: 'done_at', icon: 'leaf', mind: true },
+  // Pregnancy: kick counts, contractions, visits, questions. Left out of
+  // exports unless the person includes them (with pregnancy symptoms).
+  pregnancy_events: { label: 'Pregnancy', one: 'Pregnancy', time: 'at', icon: 'heart', pregnancy: true },
 }
+
+// Pregnancy entries: the tracker's own, and symptoms from the pregnancy group.
+export const isPregnancyEntry = (e) => Boolean(KINDS[e.kind]?.pregnancy) || (e.kind === 'symptoms' && e.raw.body_group === 'pregnancy')
 
 // When an entry happened. A check-in's `day` is a plain date; new Date() would
 // read it as UTC midnight, which is the evening before anywhere in the US.
@@ -79,9 +86,20 @@ export function describe(kind, r) {
       r.mood_before_1_5 != null && r.mood_after_1_5 != null && `mood ${r.mood_before_1_5} → ${r.mood_after_1_5}`].filter(Boolean).join(' · '),
       detail: r.notes || '' }
   }
+  if (kind === 'pregnancy_events') {
+    if (r.kind === 'kicks') return { title: `Kick count · ${r.count ?? 0}`, stats: r.duration_sec != null ? `in ${fmtDuration(r.duration_sec)}` : '', detail: r.notes || '' }
+    if (r.kind === 'contraction') return { title: 'Contraction', stats: r.duration_sec != null ? `lasted ${fmtDuration(r.duration_sec)}` : '', detail: r.notes || '' }
+    if (r.kind === 'visit') return { title: `Prenatal visit${r.title ? ` · ${r.title}` : ''}`, stats: '', detail: r.notes || '' }
+    return { title: `Question for the doctor${r.done ? ' (asked)' : ''}`, stats: '', detail: r.title || '' }
+  }
   const bits = []
   if (r.weight_lb != null) bits.push(`${n(r.weight_lb, 1)} lb`)
-  if (r.bp_systolic != null) bits.push(`BP ${r.bp_systolic}/${r.bp_diastolic ?? '—'}`)
+  if (r.bp_systolic != null) {
+    // Marked during pregnancy and the postpartum year, in the source's words.
+    const flag = vitalsFlag(r)
+    const t = flag && threshold(flag)
+    bits.push(`BP ${r.bp_systolic}/${r.bp_diastolic ?? '—'}${t ? ` (${flag === 'severe' ? 'severe range' : 'high'} for pregnancy: top ≥${t.systolic_at_least} or bottom ≥${t.diastolic_at_least}, ACOG)` : ''}`)
+  }
   if (r.glucose_mgdl != null) bits.push(`Glucose ${r.glucose_mgdl}${r.glucose_context ? ` (${r.glucose_context})` : ''}`)
   if (r.heart_rate != null) bits.push(`HR ${r.heart_rate}`)
   if (r.sleep_hr != null) bits.push(`Slept ${n(r.sleep_hr, 1)} hr`)
@@ -171,6 +189,7 @@ const COLS = {
     'night_sweats_1_5', 'missed_work', 'bed_rest', 'needed_help', 'couldnt_drive', 'notes'],
   assessments: ['kind', 'answers', 'score', 'difficulty'],
   meditations: ['minutes', 'kind', 'mood_before_1_5', 'mood_after_1_5', 'notes'],
+  pregnancy_events: ['kind', 'count', 'duration_sec', 'title', 'notes', 'done'],
 }
 
 export function toCSV(entries) {

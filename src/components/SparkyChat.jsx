@@ -5,6 +5,7 @@ import { describe } from '../lib/entries'
 import { addMed, logDose, matchMed, medLine } from '../lib/meds'
 import { shrinkToJpeg } from '../lib/images'
 import { checkCrisis, openCrisis } from '../lib/crisis'
+import { checkReading, checkSymptom } from '../lib/pregnancy'
 
 // Talk or type to Sparky. Testers asked for a microphone to speak back and
 // forth, and a chat. Both are this one sheet:
@@ -227,11 +228,14 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
         if (item.kind === 'vitals') {
           row.taken_at = when(r.at)
           row.glucose_context = row.glucose_mgdl != null ? (row.glucose_context || 'random') : null
+          // Pregnancy blood pressure check, on the phone, before saving.
+          checkReading(row)
         }
         if (item.kind === 'exercise') row.done_at = when(r.at)
         if (item.kind === 'symptoms') {
           row.felt_at = when(r.at)
           row.severity_1_5 = Math.min(5, Math.max(1, Math.round(Number(row.severity_1_5) || 0)))
+          checkSymptom(row)
         }
         const { error } = await supabase.from(TABLE[item.kind]).insert({ ...row, profile_id: profile.id })
         if (error) throw error

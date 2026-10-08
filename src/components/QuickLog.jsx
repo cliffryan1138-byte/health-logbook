@@ -7,6 +7,7 @@ import SymptomPicker from './SymptomPicker'
 import CheckIn from './CheckIn'
 import Questionnaire from './Questionnaire'
 import Meditation from './Meditation'
+import { checkReading, checkSymptom, saveVitals } from '../lib/pregnancy'
 
 // v1 quick-log: fast manual forms, and the dock that opens them.
 //
@@ -95,6 +96,19 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
     onLogged?.()
   }
 
+  // Blood pressure is checked on the phone before saving: a reading in the
+  // severe range during pregnancy or the year after opens the alert at once,
+  // even if the save then fails. With no connection the reading waits on the
+  // phone and saves later.
+  async function saveReading(row) {
+    checkReading(row)
+    setBusy(true); setErr('')
+    const r = await saveVitals(profile.id, row)
+    setBusy(false)
+    if (r.saved) { close(); onLogged?.(); return }
+    setErr(r.queued ? 'No connection. This reading is kept on your phone and saves when you’re back online.' : (r.error?.message || 'Couldn’t save.'))
+  }
+
   function submit(e) {
     e.preventDefault()
     if (open === 'meal') {
@@ -114,7 +128,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         notes: form.notes?.trim() || null,
       })
     } else if (open === 'vitals') {
-      save('vitals', {
+      saveReading({
         weight_lb: num(form.weight_lb),
         glucose_mgdl: num(form.glucose_mgdl),
         glucose_context: form.glucose_mgdl ? (form.glucose_context || 'random') : null,
@@ -142,7 +156,14 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
       const felt = form.felt_at ? new Date(form.felt_at) : new Date()
       if (Number.isNaN(felt.getTime())) { setErr('Check the start time.'); return }
       if (felt > new Date(Date.now() + 5 * 60000)) { setErr('That start time is in the future.'); return }
-      const notes = [(form.details || []).join(', '), form.notes?.trim()].filter(Boolean).join('. ')
+      const sick = form.symptom === 'Morning sickness'
+        ? [form.vomits !== undefined && form.vomits !== '' && `Threw up ${form.vomits} time${Number(form.vomits) === 1 ? '' : 's'} today`,
+            form.fluids && `Keeping fluids down: ${form.fluids}`].filter(Boolean).join('. ')
+        : ''
+      const notes = [(form.details || []).join(', '), sick, form.notes?.trim()].filter(Boolean).join('. ')
+      // During pregnancy, a headache, vision change or upper-belly pain brings
+      // up the CDC warning signs, before (and whether or not) it saves.
+      checkSymptom({ symptom: form.symptom, notes, felt_at: felt })
       save('symptoms', {
         symptom: form.symptom,
         body_group: form.body_group || null,
@@ -312,6 +333,19 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
                       })}
                     </div>
                   </Field>
+                )}
+                {form.symptom === 'Morning sickness' && (
+                  <div className="row2">
+                    <Field label="Times you threw up today"><input inputMode="numeric" value={form.vomits ?? ''} onChange={set('vomits')} /></Field>
+                    <Field label="Keeping fluids down?">
+                      <div className="chips">
+                        {['Yes', 'No'].map((v) => (
+                          <button type="button" key={v} className="chip" aria-pressed={form.fluids === v}
+                            onClick={() => setForm((f) => ({ ...f, fluids: f.fluids === v ? undefined : v }))}>{v}</button>
+                        ))}
+                      </div>
+                    </Field>
+                  </div>
                 )}
                 <Field label="Suspected trigger"><input value={form.suspected_trigger || ''} onChange={set('suspected_trigger')} placeholder="skipped lunch, poor sleep…" /></Field>
                 <Field label="Notes"><textarea rows={2} value={form.notes || ''} onChange={set('notes')} /></Field>

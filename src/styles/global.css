@@ -785,3 +785,75 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .mind-toggle input { margin-top: 3px; }
 /* Dark --crit is a light coral: navy on it, not white (white is under 3:1). */
 @media (prefers-color-scheme: dark) { .btn.crit { color: #0A264C; } }
+
+/* ── pregnancy tracker (WG-PLAN-HEALTH-002, workstream 9) ─────────────────
+   The card shows the week count only. Kick counter and contraction timer use
+   one big button so they work one-handed. A flagged blood pressure is drawn
+   in --crit, the one fault colour. */
+.preg-offer { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+.preg-offer > span { flex: 1 1 220px; color: var(--ink-soft); font-size: 14.5px; }
+.preg-week { font-size: 20px; margin-bottom: 10px; }
+.preg-week b { font-size: 34px; letter-spacing: -.02em; }
+.preg-week span { color: var(--ink-soft); }
+.preg-due { display: block; font-size: 14px; color: var(--ink-faint) !important; margin-top: 2px; }
+.preg-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.preg-yearend { background: var(--surface-2); border-radius: 10px; padding: 10px 12px; margin-bottom: 12px; font-size: 14px; color: var(--ink-soft); }
+.preg-yearend p { margin: 0; }
+.preg-h { margin: 14px 0 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-faint); }
+.preg-q { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.preg-q input {
+  flex: 1; min-width: 0; padding: 10px 12px; font-size: 15px; font-family: inherit; color: var(--ink);
+  background: var(--ground); border: 1px solid var(--line-strong); border-radius: 10px;
+}
+.preg-list { list-style: none; margin: 12px 0 0; padding: 0; }
+.preg-list li { display: flex; flex-wrap: wrap; gap: 2px 10px; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.preg-list li span { color: var(--ink-faint); }
+.preg-list li em { flex-basis: 100%; color: var(--ink-soft); font-style: normal; font-size: 13.5px; overflow-wrap: anywhere; }
+.preg-list.checks label { display: flex; gap: 8px; align-items: flex-start; }
+.preg-list.checks input { width: 18px; height: 18px; margin-top: 1px; flex: none; }
+.preg-list.checks span { color: var(--ink); }
+.preg-list.checks .done { color: var(--ink-faint); text-decoration: line-through; }
+.kick-btn {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  width: 100%; min-height: 150px; margin: 6px 0 10px; border: 0; border-radius: 18px; cursor: pointer;
+  background: var(--accent); color: var(--accent-ink); font-family: inherit;
+}
+.kick-btn b { font-size: 52px; line-height: 1; font-variant-numeric: tabular-nums; }
+.kick-btn span { font-size: 15px; opacity: .85; }
+.kick-btn.on { background: var(--gold); color: var(--gold-ink); }
+.kick-clock { text-align: center; font-size: 15px; color: var(--ink-soft); margin: 0 0 4px; font-variant-numeric: tabular-nums; }
+.cdc-quote { margin: 14px 0 0; padding: 10px 12px; border-left: 3px solid var(--line-strong); background: var(--surface-2); border-radius: 0 10px 10px 0; }
+.cdc-quote p { margin: 0 0 6px; font-size: 14px; color: var(--ink-soft); }
+.cdc-quote cite { font-style: normal; font-size: 12.5px; color: var(--ink-faint); }
+.cdc-quote a, .safety .src a { color: var(--gold-text); }
+.actions.stack { flex-direction: column; }
+.chart .pt.flag { fill: var(--crit); }
+
+/* The safety alert sits just under the 988 card (z-index 100), so the card
+   can open from inside it. */
+.safety-scrim {
+  position: fixed; inset: 0; z-index: 99; background: #0A264CCC;
+  display: grid; place-items: center; padding: 16px;
+}
+.safety {
+  width: 100%; max-width: 460px; max-height: 92vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius); padding: 22px 20px;
+  box-shadow: var(--shadow);
+}
+.safety.severe { border-top: 6px solid var(--crit); }
+.safety h2 { margin: 0 0 6px; font-size: 21px; color: var(--ink); }
+.safety h3 { margin: 18px 0 6px; font-size: 16px; }
+.safety p { margin: 0 0 10px; color: var(--ink-soft); font-size: 15px; line-height: 1.45; }
+.safety .reading { font-size: 40px; font-weight: 800; color: var(--crit); margin: 0 0 6px; font-variant-numeric: tabular-nums; }
+.safety .quote { color: var(--ink); }
+.safety-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 6px 0 4px; }
+.safety-actions .btn { display: block; text-align: center; text-decoration: none; min-height: 48px; line-height: 24px; }
+.safety-actions .btn:only-child { grid-column: 1 / -1; }
+.recheck { margin-top: 6px; padding: 12px; background: var(--surface-2); border-radius: 12px; }
+.recheck h3 { margin-top: 0; }
+.recheck .btn { width: 100%; }
+.signs ul { margin: 0 0 10px; padding-left: 18px; }
+.signs > ul > li { margin-bottom: 8px; color: var(--ink); }
+.signs ul ul { margin: 4px 0 0; }
+.signs ul ul li { color: var(--ink-soft); font-size: 14px; margin-bottom: 3px; }
+.safety .src { font-size: 12.5px; color: var(--ink-faint); }
