@@ -59,6 +59,9 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
   const [q, setQ] = useState('')
   const [limit, setLimit] = useState(40)
   const [purpose, setPurpose] = useState('personal')
+  // Mental health entries stay out of exports unless the person includes them
+  // (or filters to them on purpose). The screen always shows everything.
+  const [includeMind, setIncludeMind] = useState(false)
 
   const headOnly = kind === 'headaches'
   const shown = useMemo(() => {
@@ -71,16 +74,23 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
     })
   }, [entries, kind, q, headOnly])
 
+  const exported = useMemo(
+    () => shown.filter((e) => includeMind || !KINDS[e.kind].mind || kind === e.kind),
+    [shown, includeMind, kind])
+  const mindLeftOut = shown.length - exported.length
+  const hasMind = entries.some((e) => KINDS[e.kind].mind)
+
   const filterText = [
     headOnly ? 'headaches and migraines' : kind === 'all' ? 'all entries' : KINDS[kind].label.toLowerCase(),
     q.trim() && `containing “${q.trim()}”`,
+    mindLeftOut > 0 && 'mental health questionnaires and meditation left out',
   ].filter(Boolean).join(' ')
   const from = new Date(Date.now() - (days - 1) * 86400000)
   const period = `${fmtDay(from, { month: 'long', day: 'numeric', year: 'numeric' })} – ${fmtDay(new Date(), { month: 'long', day: 'numeric', year: 'numeric' })}`
   const base = `${slug(profile.display_name)}-${headOnly ? 'headache-log' : 'health-log'}-${dayKey(new Date())}`
 
   // The exact spreadsheet text for this selection, and its fingerprint.
-  const csvText = useMemo(() => toCSV(shown), [shown])
+  const csvText = useMemo(() => toCSV(exported), [exported])
   const [fp, setFp] = useState({ for: null, hash: '' })
   useEffect(() => {
     let live = true
@@ -111,9 +121,9 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
   const [done, setDone] = useState('')
   const record = (event, verb) => {
     logEvent(profile.id, event, {
-      purpose, days, filter: kind, searched: Boolean(q.trim()), count: shown.length, sha256: hash,
+      purpose, days, filter: kind, searched: Boolean(q.trim()), count: exported.length, sha256: hash,
     })
-    setDone(`${verb} ${shown.length} ${shown.length === 1 ? 'entry' : 'entries'} · fingerprint ${hash.slice(0, 12)}…`)
+    setDone(`${verb} ${exported.length} ${exported.length === 1 ? 'entry' : 'entries'} · fingerprint ${hash.slice(0, 12)}…`)
   }
 
   const csv = () => { download(`${base}.csv`, csvText); record('export_csv', 'Downloaded') }
@@ -160,7 +170,7 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
 
           <div className="export">
             <div className="export-head">
-              <strong>Save or send {shown.length} {shown.length === 1 ? 'entry' : 'entries'}</strong>
+              <strong>Save or send {exported.length} {exported.length === 1 ? 'entry' : 'entries'}</strong>
               <span className="note">{period}</span>
             </div>
             <div className="chips tight" role="group" aria-label="Who is it for">
@@ -168,10 +178,16 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
                 <button type="button" key={k} className="chip" aria-pressed={purpose === k} onClick={() => setPurpose(k)}>{p.label}</button>
               ))}
             </div>
+            {hasMind && (
+              <label className="mind-toggle">
+                <input type="checkbox" checked={includeMind} onChange={(e) => setIncludeMind(e.target.checked)} />
+                Include mental health questionnaires and meditation{mindLeftOut > 0 ? ` (${mindLeftOut} left out)` : ''}
+              </label>
+            )}
             <div className="actions">
-              <button type="button" className="btn" onClick={print} disabled={!shown.length || !hash}>Print / Save PDF</button>
-              <button type="button" className="btn ghost" onClick={csv} disabled={!shown.length || !hash}>Spreadsheet (CSV)</button>
-              {canShare && <button type="button" className="btn ghost" onClick={share} disabled={!shown.length || !hash}>Share</button>}
+              <button type="button" className="btn" onClick={print} disabled={!exported.length || !hash}>Print / Save PDF</button>
+              <button type="button" className="btn ghost" onClick={csv} disabled={!exported.length || !hash}>Spreadsheet (CSV)</button>
+              {canShare && <button type="button" className="btn ghost" onClick={share} disabled={!exported.length || !hash}>Share</button>}
             </div>
             {done && <p className="saved-note" role="status">✓ {done}</p>}
           </div>
@@ -214,7 +230,7 @@ export default function Logbook({ entries, days, profile, medications = [] }) {
         <Activity profileId={profile.id} refreshKey={done} />
       </div>
 
-      <PrintRecord entries={shown} purpose={PURPOSES[purpose]} who={profile.display_name} period={period}
+      <PrintRecord entries={exported} purpose={PURPOSES[purpose]} who={profile.display_name} period={period}
         filterText={filterText} hash={hash} changes={changes} medications={medications} from={from} />
     </>
   )

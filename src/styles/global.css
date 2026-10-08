@@ -740,3 +740,48 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   flex: none; min-height: 40px; padding: 0 16px; border: 0; border-radius: 10px; cursor: pointer;
   background: var(--gold); color: var(--gold-ink); font: 600 15px/1 inherit; font-family: inherit;
 }
+
+/* ── 988 crisis card (approved safety flow, 2026-10-08) ─────────────────── */
+.crisis-scrim {
+  position: fixed; inset: 0; z-index: 100; background: #0A264CCC;
+  display: grid; place-items: center; padding: 16px;
+}
+.crisis {
+  width: 100%; max-width: 420px; max-height: 92vh; overflow-y: auto;
+  background: var(--surface); border-radius: var(--radius); padding: 24px 22px;
+  box-shadow: var(--shadow);
+}
+.crisis h2 { margin: 0 0 8px; font-size: 21px; color: var(--ink); }
+.crisis p { margin: 0 0 14px; color: var(--ink-soft); font-size: 15px; line-height: 1.45; }
+.crisis .btn { display: block; text-align: center; text-decoration: none; min-height: 48px; line-height: 24px; }
+.crisis-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+.crisis-vet { font-size: 14.5px !important; }
+.crisis-vet a { color: var(--gold-text); }
+.crisis-911 { color: var(--ink) !important; font-weight: 600; margin-top: 4px !important; }
+.btn.crit { background: var(--crit); color: #fff; }
+.crisis-back {
+  display: block; width: 100%; margin-top: 14px; padding: 12px; background: none; cursor: pointer;
+  border: 1px solid var(--line-strong); border-radius: 10px; color: var(--ink-soft); font-size: 15px;
+}
+
+/* ── questionnaires and the Mind card ───────────────────────────────────── */
+.q-stem { margin: -6px 0 12px; }
+.q-list { margin: 0; padding-left: 20px; }
+.q-list li { margin-bottom: 16px; }
+.q-list p { margin: 0 0 8px; color: var(--ink); font-size: 15px; line-height: 1.4; }
+.q-opts { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.q-opts .chip { border-radius: 10px; min-height: 40px; }
+.q-score { font-size: 18px; margin: 0 0 6px; color: var(--ink); }
+.q-score b { font-size: 30px; }
+.mind-list { list-style: none; margin: 0; padding: 0; }
+.mind-list li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 10px 0; border-top: 1px solid var(--line);
+}
+.mind-list li:first-child { border-top: 0; }
+.mind-score { color: var(--ink-soft); font-size: 13.5px; margin-top: 2px; }
+.note-inline { color: var(--ink-faint); font-size: 13px; }
+.mind-toggle { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; color: var(--ink-soft); margin: 4px 0 10px; }
+.mind-toggle input { margin-top: 3px; }
+/* Dark --crit is a light coral: navy on it, not white (white is under 3:1). */
+@media (prefers-color-scheme: dark) { .btn.crit { color: #0A264C; } }

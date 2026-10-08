@@ -4,6 +4,7 @@ import Icon from '../lib/icons'
 import { describe } from '../lib/entries'
 import { addMed, logDose, matchMed, medLine } from '../lib/meds'
 import { shrinkToJpeg } from '../lib/images'
+import { checkCrisis, openCrisis } from '../lib/crisis'
 
 // Talk or type to Sparky. Testers asked for a microphone to speak back and
 // forth, and a chat. Both are this one sheet:
@@ -166,6 +167,9 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
     const line = (said ?? text).trim()
     if ((!line && !image) || busy) return
     setText(''); setErr('')
+    // Self-harm words, typed or spoken, open the 988 card on the phone at once,
+    // before (and whether or not) the message reaches Sparky.
+    checkCrisis(line)
     const next = [...msgsRef.current, { role: 'user', text: line, image }]
     setMsgs(next)
     setBusy(true)
@@ -187,6 +191,8 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
         throw new Error(msg || data?.error || 'Sparky couldn’t answer just now. Try again.')
       }
       setMsgs((m) => [...m, { role: 'assistant', text: data.reply, drafts: flatten(data.drafts, Boolean(image)) }])
+      // Sparky's own judgment, for words the phone's list missed.
+      if (data.crisis) openCrisis()
       if (spoken && handsRef.current) speak(data.reply, () => { if (handsRef.current) listen() })
       else if (spoken) speak(data.reply)
     } catch (e) {
