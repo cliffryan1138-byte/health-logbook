@@ -14,6 +14,14 @@ if (location.hostname.endsWith('.')) {
   location.replace(u.toString())
 }
 
+// Keep a copy of the app on the phone so it opens with no connection
+// (public/sw.js). Production only: the dev server's files change constantly.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* private mode, old browser: works online as before */ })
+  })
+}
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <App />
