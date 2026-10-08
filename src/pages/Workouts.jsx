@@ -34,6 +34,13 @@ function newSession(day, last) {
   return { dayId: day.id, startedAt: Date.now(), sets, notes: '' }
 }
 
+// A moment as a datetime-local value in the phone's time.
+function toLocalInput(ms) {
+  const d = new Date(ms)
+  d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
+  return d.toISOString().slice(0, 16)
+}
+
 const fmtClock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
 
 export default function Workouts({ profile, onLogged }) {
@@ -143,11 +150,16 @@ export default function Workouts({ profile, onLogged }) {
   async function finish() {
     const doneCount = session.sets.filter((s) => s.done).length
     if (!doneCount && !confirm('No sets are ticked. Save this workout anyway?')) return
+    // "When did you do it?" defaults to when the session was started; change
+    // it to log a workout done earlier. Minutes still default to the timer.
+    const startedAt = session.at ? new Date(session.at).getTime() : session.startedAt
+    if (Number.isNaN(startedAt)) { setErr('Enter when you did it.'); return }
+    if (startedAt > Date.now() + 5 * 60000) { setErr('That time is in the future.'); return }
     setBusy(true); setErr('')
     try {
       const minutes = session.minutes || Math.max(1, Math.round((Date.now() - session.startedAt) / 60000))
       await finishWorkout(profile.id, {
-        day: activeDay, planName: plan.name, week, startedAt: session.startedAt, minutes, notes: session.notes, sets: session.sets,
+        day: activeDay, planName: plan.name, week, startedAt, minutes, notes: session.notes, sets: session.sets,
       })
       setSaved(`${activeDay.title} saved: ${doneCount} sets, ${minutes} min.`)
       setSession(null); setRest(null); setDayId(null)
@@ -257,7 +269,9 @@ export default function Workouts({ profile, onLogged }) {
               <label className="field"><span>Minutes</span>
                 <input inputMode="numeric" value={session.minutes ?? ''} placeholder={String(Math.max(1, Math.round((Date.now() - session.startedAt) / 60000)))}
                   onChange={(e) => setSession((s) => ({ ...s, minutes: e.target.value }))} /></label>
-              <span />
+              <label className="field"><span>When did you do it?</span>
+                <input type="datetime-local" value={session.at ?? toLocalInput(session.startedAt)}
+                  onChange={(e) => setSession((s) => ({ ...s, at: e.target.value }))} /></label>
             </div>
             <label className="field"><span>Notes (how it felt, pain, band changes)</span>
               <textarea rows={2} value={session.notes} onChange={(e) => setSession((s) => ({ ...s, notes: e.target.value }))} /></label>
