@@ -660,6 +660,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .chip.took { flex: none; background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; padding: 8px 14px; }
 .chip.took[disabled] { opacity: .55; }
 .med-label { font-size: 13px; padding: 2px 0 0; }
+.med-links-row { display: flex; gap: 16px; }
 .label-sheet .label-sec { border-top: 1px solid var(--line); padding: 8px 0; }
 .label-sheet .label-sec summary { cursor: pointer; font-weight: 650; }
 .label-sheet blockquote { margin: 8px 0; padding-left: 10px; border-left: 3px solid var(--line-strong); font-size: 13.5px; color: var(--ink-soft); white-space: pre-line; overflow-wrap: anywhere; }
