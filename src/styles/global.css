@@ -864,3 +864,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   background: var(--surface-2); border: 1px solid var(--line-strong); color: var(--ink-soft);
 }
 .offline-note b { color: var(--ink); }
+
+/* ── removing an entry (Logbook): tap an entry, Remove, Remove for sure ──── */
+.feed-body[role="button"] { cursor: pointer; border-radius: 8px; }
+.feed-body[role="button"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.feed li.picked { background: var(--surface-2); margin: 0 -10px; padding-left: 10px; padding-right: 10px; border-radius: 10px; }
+.feed-dup { color: var(--gold-text); font-size: 12px; margin-top: 3px; font-weight: 600; }
+.feed-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; }
+.chip.remove { background: var(--crit); border-color: var(--crit); color: #fff; font-weight: 600; }
+@media (prefers-color-scheme: dark) { .chip.remove { color: #0A264C; } }

@@ -111,7 +111,7 @@ export default function Dashboard() {
           <WorkoutHistory profile={profile} key={workoutsSaved} />
         </div>
       ) : view === 'logbook' ? (
-        <Logbook entries={entries} days={range} profile={profile} medications={logs.medications} />
+        <Logbook entries={entries} days={range} profile={profile} medications={logs.medications} onChanged={logs.refresh} />
       ) : (
         <Overview
           profile={profile}
