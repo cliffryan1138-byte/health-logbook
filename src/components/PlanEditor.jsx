@@ -2,9 +2,11 @@ import { useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { shrinkToJpeg } from '../lib/images'
 import { savePlan, WEEKDAYS } from '../lib/workouts'
+import { PLAN_LIBRARY, PREGNANCY_GUIDANCE, RETRIEVED, draftFrom } from '../lib/planLibrary'
 
-// Load a training plan: read it from a PDF or photo (the read-plan function),
-// or build it by hand — either way it lands in the same editor, and nothing
+// Load a training plan: start from one of the built-in plans (lib/planLibrary,
+// public-domain NIA exercises), read it from a PDF or photo (the read-plan
+// function), or build it by hand — either way it lands in the same editor, and nothing
 // is saved until Save. Saving makes it the active plan.
 
 const MAX_PDF_MB = 8
@@ -35,7 +37,7 @@ function nextMonday() {
 
 export default function PlanEditor({ profile, onClose, onSaved }) {
   const fileRef = useRef(null)
-  const [stage, setStage] = useState('start') // start | reading | edit
+  const [stage, setStage] = useState('start') // start | library | reading | edit
   const [draft, setDraft] = useState(null)
   const [source, setSource] = useState('manual')
   const [open, setOpen] = useState(0) // which day card is expanded
@@ -56,6 +58,11 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
   function startBlank() {
     setDraft({ name: '', description: '', weeks: '', started_on: nextMonday(), week_notes: [], days: [blankDay(1)] })
     setSource('manual'); setStage('edit')
+  }
+
+  function startFrom(entry) {
+    setDraft(draftFrom(entry, nextMonday()))
+    setSource('library'); setOpen(0); setStage('edit')
   }
 
   async function onFile(e) {
@@ -122,6 +129,9 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
               You check it before anything is saved. Or build one yourself.
             </p>
             <div className="choose">
+              <button type="button" className="choice" onClick={() => setStage('library')}>
+                <span className="choice-text"><b>Start from a plan</b><span>Beginner, older adults, or getting back into it, from the National Institute on Aging</span></span>
+              </button>
               <button type="button" className="choice" onClick={() => fileRef.current?.click()}>
                 <span className="choice-text"><b>From a PDF or photo</b><span>Your coach’s or doctor’s plan, a printout, a screenshot</span></span>
               </button>
@@ -134,6 +144,40 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
           </>
         )}
 
+        {stage === 'library' && (
+          <>
+            <p className="note" style={{ marginTop: 0 }}>
+              Plans built from the National Institute on Aging’s exercises, in NIA’s own words, following its guidance on how often.
+              The same for men and women: US guidelines don’t differ by sex. You can change anything before saving.
+            </p>
+            <div className="choose">
+              {PLAN_LIBRARY.map((e) => {
+                const days = e.plan.days.length
+                return (
+                  <button key={e.id} type="button" className="choice" onClick={() => startFrom(e)}>
+                    <span className="choice-text">
+                      <b>{e.plan.name}</b>
+                      <span>{e.for} · {days} days a week{e.plan.weeks ? ` · ${e.plan.weeks} weeks` : ''}</span>
+                      <span>{e.summary}</span>
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            <details className="as-table lib-preg">
+              <summary>Pregnant or recently had a baby?</summary>
+              <p className="note">There’s no pregnancy plan here: no US government source gives one. Ask your OB or midwife what’s right for you. The US guidelines say:</p>
+              {PREGNANCY_GUIDANCE.quotes.map((q) => <blockquote key={q}>“{q}”</blockquote>)}
+              <p className="src">{PREGNANCY_GUIDANCE.quoteSource.publisher}, <a href={PREGNANCY_GUIDANCE.quoteSource.url} target="_blank" rel="noreferrer">{PREGNANCY_GUIDANCE.quoteSource.title}</a>, p. {PREGNANCY_GUIDANCE.quoteSource.page}.</p>
+              <blockquote>“{PREGNANCY_GUIDANCE.avoid}”</blockquote>
+              <blockquote>After the baby: “{PREGNANCY_GUIDANCE.afterBirth}”</blockquote>
+              <p className="src">{PREGNANCY_GUIDANCE.factSheetSource.publisher}, <a href={PREGNANCY_GUIDANCE.factSheetSource.url} target="_blank" rel="noreferrer">{PREGNANCY_GUIDANCE.factSheetSource.title}</a>.</p>
+            </details>
+            <p className="src">Exercise text: National Institute on Aging, National Institutes of Health (public domain). Retrieved {RETRIEVED}.</p>
+            <div className="actions"><button type="button" className="btn ghost" onClick={() => setStage('start')}>Back</button></div>
+          </>
+        )}
+
         {stage === 'reading' && (
           <div className="paper-reading">
             <img src="/sparky.png" alt="" width="64" height="64" />
@@ -143,7 +187,12 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
 
         {stage === 'edit' && draft && (
           <>
-            {source !== 'manual' && (
+            {source === 'library' && (
+              <p className="note" style={{ marginTop: 0 }}>
+                {draft.description} Check the start date, change any day or exercise you like, then save. Each exercise’s steps are under “How to” during a workout.
+              </p>
+            )}
+            {source !== 'manual' && source !== 'library' && (
               <p className="note" style={{ marginTop: 0 }}>
                 Found {draft.days.length} days and {exCount} exercises. Check each day against your plan and fix anything wrong.
               </p>

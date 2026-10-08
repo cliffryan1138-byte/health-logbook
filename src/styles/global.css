@@ -586,7 +586,12 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .ex-target { font-size: 13px; color: var(--ink-soft); }
 .ex-cues { margin-top: 6px; font-size: 13.5px; color: var(--ink-soft); }
 .ex-cues summary { cursor: pointer; color: var(--gold-text); }
-.ex-cues p { margin: 6px 0 0; }
+.ex-cues p { margin: 6px 0 0; white-space: pre-line; }
+.choice-text span + span { margin-top: 4px; }
+.day-notes { white-space: pre-line; margin-top: 0; }
+.lib-preg { margin-top: 12px; }
+.lib-preg blockquote { margin: 8px 0; padding-left: 10px; border-left: 3px solid var(--line-strong); font-size: 13.5px; color: var(--ink-soft); }
+.plan-sheet .src { font-size: 12px; color: var(--ink-faint); margin: 8px 0 0; }
 .ex-last { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-faint); }
 
 .set-rows { margin-top: 10px; display: grid; gap: 6px; }
