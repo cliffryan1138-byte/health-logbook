@@ -3,17 +3,20 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { focusFor, COMMON_TRIGGERS } from '../lib/items'
 import SexChoice from '../components/SexChoice'
+import VeteranFields from '../components/VeteranFields'
 
 // Shown once, when a signed-in user has no profiles row yet. Writes the row the
 // dashboard and the health-tracker skill both read.
 //
 // RECOVERY NOTE: this file was not recoverable from the deployment. It is
 // rebuilt against the live profiles schema (display_name, focus_areas[],
-// watch_list[], targets jsonb, color), plus sex (migration 0012).
+// watch_list[], targets jsonb, color), plus sex (migration 0012) and veteran
+// status (0013).
 
 export default function Onboarding() {
   const { session, refreshProfile } = useAuth()
   const [sex, setSex] = useState(null)
+  const [vet, setVet] = useState({ veteran: null, service_branches: [], va_rating: null })
   const [name, setName] = useState('')
   const [focus, setFocus] = useState([])
   const [watch, setWatch] = useState([])
@@ -28,12 +31,14 @@ export default function Onboarding() {
   async function submit(e) {
     e.preventDefault()
     if (!sex) { setErr('Choose male or female first.'); return }
+    if (vet.veteran == null) { setErr('Tell us whether you’re a veteran.'); return }
     if (!name.trim()) { setErr('What should the logbook call you?'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.from('profiles').insert({
       id: session.user.id,
       display_name: name.trim(),
       sex,
+      ...vet,
       focus_areas: focus.filter((f) => offered.includes(f)),
       watch_list: watch,
       targets: {},
@@ -53,6 +58,7 @@ export default function Onboarding() {
         </div>
 
         <SexChoice value={sex} onChange={(v) => { setSex(v); setErr('') }} />
+        <VeteranFields value={vet} onChange={(v) => { setVet(v); setErr('') }} />
 
         <div className="field">
           <label htmlFor="name">Your name</label>

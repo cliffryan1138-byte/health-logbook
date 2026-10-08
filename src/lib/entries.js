@@ -13,6 +13,14 @@ export const KINDS = {
   vitals:   { label: 'Vitals',   one: 'Vitals',   time: 'taken_at', icon: 'drop' },
   exercise: { label: 'Exercise', one: 'Exercise', time: 'done_at',  icon: 'dumbbell' },
   med_doses: { label: 'Medicine', one: 'Medicine', time: 'taken_at', icon: 'pill' },
+  // One row per day (a date, not a moment): placed at local noon on the timeline.
+  daily_checkins: { label: 'Check-ins', one: 'Check-in', time: 'day', icon: 'moon' },
+}
+
+// When an entry happened. A check-in's `day` is a plain date; new Date() would
+// read it as UTC midnight, which is the evening before anywhere in the US.
+export function entryTime(kind, r) {
+  return kind === 'daily_checkins' ? new Date(`${r.day}T12:00:00`) : new Date(r[KINDS[kind].time])
 }
 
 export const HEADACHE = /headache|migraine/i
@@ -55,6 +63,7 @@ export function describe(kind, r) {
       detail: r.notes || '',
     }
   }
+  if (kind === 'daily_checkins') return describeCheckin(r)
   const bits = []
   if (r.weight_lb != null) bits.push(`${n(r.weight_lb, 1)} lb`)
   if (r.bp_systolic != null) bits.push(`BP ${r.bp_systolic}/${r.bp_diastolic ?? '—'}`)
@@ -64,11 +73,36 @@ export function describe(kind, r) {
   return { title: bits.slice(0, 2).join(' · ') || 'Vitals', stats: bits.slice(2).join(' · '), detail: r.notes || '' }
 }
 
+const WORD = { mood_1_5: 'Mood', stress_1_5: 'Stress', energy_1_5: 'Energy', sleep_quality_1_5: 'Sleep quality', hot_flashes_1_5: 'Hot flashes', night_sweats_1_5: 'Night sweats' }
+const IMPACT_WORDS = { missed_work: 'missed work', bed_rest: 'bed rest', needed_help: 'needed help', couldnt_drive: 'couldn’t drive' }
+
+function describeCheckin(r) {
+  const first = []
+  if (r.sleep_hr != null) first.push(`Slept ${n(r.sleep_hr, 1)} hr${r.woke_at_night ? ' (woke in the night)' : ''}`)
+  for (const k of ['mood_1_5', 'stress_1_5', 'energy_1_5']) if (r[k] != null) first.push(`${WORD[k]} ${r[k]}/5`)
+  const more = []
+  if (r.sleep_quality_1_5 != null) more.push(`${WORD.sleep_quality_1_5} ${r.sleep_quality_1_5}/5`)
+  if (r.water_glasses != null) more.push(`${r.water_glasses} water`)
+  if (r.caffeine_cups != null) more.push(`${r.caffeine_cups} caffeine`)
+  if (r.alcohol_drinks != null) more.push(`${r.alcohol_drinks} alcohol${r.alcohol_type ? ` (${r.alcohol_type})` : ''}`)
+  if (r.bowel) more.push(`bowel ${r.bowel}`)
+  if (r.bloating) more.push('bloating')
+  if (r.reflux) more.push('reflux')
+  if (r.period && r.period !== 'none') more.push(`period ${r.period}`)
+  for (const k of ['hot_flashes_1_5', 'night_sweats_1_5']) if (r[k] != null) more.push(`${WORD[k]} ${r[k]}/5`)
+  const impact = Object.keys(IMPACT_WORDS).filter((k) => r[k]).map((k) => IMPACT_WORDS[k])
+  return {
+    title: first.slice(0, 2).join(' · ') || 'Check-in',
+    stats: [...first.slice(2), ...more].join(' · '),
+    detail: [impact.length && `Day: ${impact.join(', ')}`, r.notes].filter(Boolean).join(' — '),
+  }
+}
+
 export function toEntries(logs) {
   const out = []
   for (const kind of Object.keys(KINDS)) {
     for (const r of logs[kind] || []) {
-      const at = new Date(r[KINDS[kind].time])
+      const at = entryTime(kind, r)
       const recorded = r.created_at ? new Date(r.created_at) : null
       out.push({
         id: `${kind}:${r.id}`,
@@ -100,6 +134,11 @@ export function fmtTime(d) {
   return new Date(d).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+// An entry's time of day, or "All day" for a check-in (it has a date, not a time).
+export function entryClock(e) {
+  return e.kind === 'daily_checkins' ? 'All day' : fmtTime(e.at)
+}
+
 export function fmtStamp(d) {
   return d ? `${fmtDay(d, { year: 'numeric', month: 'short', day: 'numeric' })} ${fmtTime(d)}` : 'not recorded'
 }
@@ -108,10 +147,13 @@ export function fmtStamp(d) {
 
 const COLS = {
   meals: ['description', 'calories', 'carbs_g', 'sugar_g', 'fiber_g', 'protein_g', 'fat_g', 'sodium_mg', 'confidence', 'source', 'trigger_watch', 'notes'],
-  symptoms: ['symptom', 'severity_1_5', 'duration_hr', 'suspected_trigger', 'notes'],
+  symptoms: ['symptom', 'body_group', 'severity_1_5', 'duration_hr', 'suspected_trigger', 'notes'],
   vitals: ['weight_lb', 'bp_systolic', 'bp_diastolic', 'heart_rate', 'glucose_mgdl', 'glucose_context', 'sleep_hr', 'energy_1_5', 'mood_1_5', 'waist_in', 'notes'],
   exercise: ['activity', 'duration_min', 'intensity', 'notes'],
   med_doses: ['name', 'dose', 'notes'],
+  daily_checkins: ['sleep_hr', 'sleep_quality_1_5', 'woke_at_night', 'mood_1_5', 'stress_1_5', 'energy_1_5', 'water_glasses',
+    'caffeine_cups', 'alcohol_drinks', 'alcohol_type', 'bowel', 'bloating', 'reflux', 'period', 'hot_flashes_1_5',
+    'night_sweats_1_5', 'missed_work', 'bed_rest', 'needed_help', 'couldnt_drive', 'notes'],
 }
 
 export function toCSV(entries) {
@@ -125,7 +167,7 @@ export function toCSV(entries) {
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const rows = [...entries].sort((a, b) => a.at - b.at).map((e) =>
-    [KINDS[e.kind].one, dayKey(e.at), fmtTime(e.at), ...fields.map((f) => e.raw[f]),
+    [KINDS[e.kind].one, dayKey(e.at), e.kind === 'daily_checkins' ? '' : fmtTime(e.at), ...fields.map((f) => e.raw[f]),
       e.recorded ? e.recorded.toISOString() : '', e.edited ? e.edited.toISOString() : ''].map(q).join(','))
   return [head.join(','), ...rows].join('\n')
 }

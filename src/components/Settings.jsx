@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { BODY_ITEMS, shows, focusFor, COMMON_TRIGGERS } from '../lib/items'
 import SexChoice from './SexChoice'
+import VeteranFields from './VeteranFields'
 
 // Everything sign-up asked, changeable later, plus which body-specific items
 // show. Turning an item off only hides it: nothing logged is deleted, and
@@ -9,6 +10,7 @@ import SexChoice from './SexChoice'
 export default function Settings({ profile, onClose, onSaved }) {
   const [name, setName] = useState(profile.display_name || '')
   const [sex, setSex] = useState(profile.sex)
+  const [vet, setVet] = useState({ veteran: profile.veteran ?? null, service_branches: profile.service_branches || [], va_rating: profile.va_rating ?? null })
   const [focus, setFocus] = useState(profile.focus_areas || [])
   const [watch, setWatch] = useState(profile.watch_list || [])
   // Only the items the person has set themselves; the rest follow `sex`.
@@ -31,6 +33,7 @@ export default function Settings({ profile, onClose, onSaved }) {
     const { error } = await supabase.from('profiles').update({
       display_name: name.trim(),
       sex,
+      ...vet,
       focus_areas: focus,
       watch_list: watch,
       shown_items: own,
@@ -69,6 +72,8 @@ export default function Settings({ profile, onClose, onSaved }) {
           </ul>
           <p className="note">Hiding an item never deletes what you logged. Turn it back on and it’s all there.</p>
         </div>
+
+        <VeteranFields value={vet} onChange={setVet} />
 
         <div className="field">
           <label>What are you watching?</label>
