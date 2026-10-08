@@ -1,19 +1,19 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { focusFor, COMMON_TRIGGERS } from '../lib/items'
+import SexChoice from '../components/SexChoice'
 
 // Shown once, when a signed-in user has no profiles row yet. Writes the row the
 // dashboard and the health-tracker skill both read.
 //
 // RECOVERY NOTE: this file was not recoverable from the deployment. It is
 // rebuilt against the live profiles schema (display_name, focus_areas[],
-// watch_list[], targets jsonb, color).
-
-const FOCUS = ['blood sugar', 'deficit', 'recovery', 'blood pressure', 'sleep', 'GERD', 'perimenopause', 'joints']
-const COMMON_TRIGGERS = ['coffee', 'tomato', 'citrus', 'onion', 'garlic', 'chocolate', 'alcohol', 'spicy', 'dairy', 'fried']
+// watch_list[], targets jsonb, color), plus sex (migration 0012).
 
 export default function Onboarding() {
   const { session, refreshProfile } = useAuth()
+  const [sex, setSex] = useState(null)
   const [name, setName] = useState('')
   const [focus, setFocus] = useState([])
   const [watch, setWatch] = useState([])
@@ -22,15 +22,19 @@ export default function Onboarding() {
 
   const toggle = (list, setList) => (v) =>
     setList(list.includes(v) ? list.filter((x) => x !== v) : [...list, v])
+  // Only offer focus areas that fit the answer above.
+  const offered = focusFor({ sex })
 
   async function submit(e) {
     e.preventDefault()
+    if (!sex) { setErr('Choose male or female first.'); return }
     if (!name.trim()) { setErr('What should the logbook call you?'); return }
     setBusy(true); setErr('')
     const { error } = await supabase.from('profiles').insert({
       id: session.user.id,
       display_name: name.trim(),
-      focus_areas: focus,
+      sex,
+      focus_areas: focus.filter((f) => offered.includes(f)),
       watch_list: watch,
       targets: {},
     })
@@ -45,18 +49,20 @@ export default function Onboarding() {
         <img className="mark" src="/sparky.png" alt="" width="72" height="72" />
         <div>
           <h1>Set up your logbook</h1>
-          <p>Two questions. You can change both later.</p>
+          <p>A few questions. You can change any of them later in Settings.</p>
         </div>
+
+        <SexChoice value={sex} onChange={(v) => { setSex(v); setErr('') }} />
 
         <div className="field">
           <label htmlFor="name">Your name</label>
-          <input id="name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <input id="name" value={name} onChange={(e) => setName(e.target.value)} />
         </div>
 
         <div className="field">
           <label>What are you watching?</label>
           <div className="chips">
-            {FOCUS.map((f) => (
+            {offered.map((f) => (
               <button type="button" key={f} className="chip" aria-pressed={focus.includes(f)}
                 onClick={() => toggle(focus, setFocus)(f)}>{f}</button>
             ))}

@@ -12,6 +12,7 @@ import Workouts from './Workouts'
 import WorkoutHistory from '../components/WorkoutHistory'
 import Medications from '../components/Medications'
 import SparkyChat from '../components/SparkyChat'
+import Settings from '../components/Settings'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
 import { KINDS, toEntries, dayKey, fmtDay, fmtTime, isHeadache } from '../lib/entries'
@@ -37,7 +38,8 @@ function remembered(key, fallback, allowed) {
 }
 
 export default function Dashboard() {
-  const { profile, signOut } = useAuth()
+  const { profile, signOut, refreshProfile } = useAuth()
+  const [settings, setSettings] = useState(false)
   const [range, setRange] = useState(() => remembered('range', 30, RANGES.map((r) => r[0])))
   const [view, setView] = useState(() => remembered('view', 'overview', ['overview', 'workouts', 'logbook']))
   // The calendar always wants at least five weeks of context.
@@ -65,6 +67,7 @@ export default function Dashboard() {
           <img className="mark" src="/sparky.png" alt="" width="44" height="44" />
           <h1>Daybook</h1>
         </div>
+        <button className="signout" onClick={() => setSettings(true)}>Settings</button>
         <button className="signout" onClick={signOut}>Sign out</button>
       </header>
 
@@ -118,6 +121,7 @@ export default function Dashboard() {
             listenFirst={chat === 'talk'} firstPhoto={chat.photo} onClose={() => setChat(null)} />
         )}
         <InstallPrompt />
+        {settings && <Settings profile={profile} onClose={() => setSettings(false)} onSaved={refreshProfile} />}
       </div>
     </div>
   )

@@ -1,6 +1,7 @@
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
 import Onboarding from './pages/Onboarding'
+import AskSex from './pages/AskSex'
 import Dashboard from './pages/Dashboard'
 import SetPassword from './pages/SetPassword'
 import UpdateBanner from './components/UpdateBanner'
@@ -13,6 +14,7 @@ function Gate() {
   if (!session) return <Login />
   if (recovery) return <SetPassword />
   if (!profile) return <Onboarding />
+  if (!profile.sex) return <AskSex />
   return <Dashboard />
 }
 
