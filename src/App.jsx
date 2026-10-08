@@ -5,6 +5,7 @@ import AskOnce from './pages/AskOnce'
 import Dashboard from './pages/Dashboard'
 import SetPassword from './pages/SetPassword'
 import UpdateBanner from './components/UpdateBanner'
+import CrisisCard from './components/CrisisCard'
 
 function Gate() {
   const { session, profile, recovery } = useAuth()
@@ -23,6 +24,7 @@ export default function App() {
     <AuthProvider>
       <UpdateBanner />
       <Gate />
+      <CrisisCard />
     </AuthProvider>
   )
 }

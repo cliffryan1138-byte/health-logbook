@@ -13,6 +13,7 @@ import WorkoutHistory from '../components/WorkoutHistory'
 import Medications from '../components/Medications'
 import SparkyChat from '../components/SparkyChat'
 import Settings from '../components/Settings'
+import MindCard from '../components/MindCard'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
 import { KINDS, toEntries, dayKey, fmtDay, fmtTime, entryClock, isHeadache } from '../lib/entries'
@@ -106,6 +107,7 @@ export default function Dashboard() {
           from={from}
           onOpenLog={() => setView('logbook')}
           onCheckIn={() => setLogKind('checkin')}
+          onAdd={setLogKind}
         />
       )}
 
@@ -128,7 +130,7 @@ export default function Dashboard() {
   )
 }
 
-function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenLog, onCheckIn }) {
+function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenLog, onCheckIn, onAdd }) {
   const inRange = (rows, field) => rows.filter((r) => new Date(r[field]) >= from)
   const meals = inRange(logs.meals, 'eaten_at')
   const vitals = inRange(logs.vitals, 'taken_at')
@@ -240,6 +242,7 @@ function Overview({ profile, logs, all, entries, range, fetchDays, from, onOpenL
       )}
 
       {meds}
+      <MindCard assessments={inRange(logs.assessments || [], 'taken_at')} meditations={inRange(logs.meditations || [], 'done_at')} onAdd={onAdd} />
 
       <SymptomCalendar entries={all} days={fetchDays} range={range} />
 

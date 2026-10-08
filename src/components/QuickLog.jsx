@@ -5,6 +5,8 @@ import PaperNotes from './PaperNotes'
 import { DoseSheet } from './Medications'
 import SymptomPicker from './SymptomPicker'
 import CheckIn from './CheckIn'
+import Questionnaire from './Questionnaire'
+import Meditation from './Meditation'
 
 // v1 quick-log: fast manual forms, and the dock that opens them.
 //
@@ -33,6 +35,9 @@ const CHOICES = [
   { kind: 'vitals', icon: 'drop', label: 'Vitals', hint: 'Weight, blood sugar, blood pressure, sleep' },
   { kind: 'dose', icon: 'pill', label: 'Medicine taken', hint: 'A dose of something on your list, or anything else' },
   { kind: 'exercise', icon: 'dumbbell', label: 'Exercise', hint: 'Walk, weights, bike…' },
+  { kind: 'phq9', icon: 'mind', label: 'Mood check-up (PHQ-9)', hint: 'Nine questions about the last two weeks' },
+  { kind: 'gad7', icon: 'mind', label: 'Anxiety check-up (GAD-7)', hint: 'Seven questions about the last two weeks' },
+  { kind: 'meditation', icon: 'leaf', label: 'Meditation', hint: 'Minutes, kind, mood before and after' },
   { kind: 'paper', icon: 'camera', label: 'Old notes or PDF log', hint: 'Photo of paper notes, or a PDF from another app' },
   { kind: 'talk', icon: 'mic', label: 'Talk to Sparky', hint: 'Say what happened; Sparky drafts the entries' },
 ]
@@ -45,6 +50,9 @@ const SEVERITY_WORDS = ['', 'Mild', 'Noticeable', 'Medium', 'Bad', 'Worst ever']
 
 const GLUCOSE_CONTEXTS = ['fasting', 'post-breakfast', 'post-lunch', 'post-dinner', 'random']
 const INTENSITIES = ['easy', 'moderate', 'hard']
+
+// Choices that open their own component instead of a form in this sheet.
+const OWN_SHEETS = ['paper', 'dose', 'checkin', 'phq9', 'gad7', 'meditation']
 
 const SHEETS = {
   choose: 'What are you adding?',
@@ -168,6 +176,14 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         <PaperNotes profile={profile} onClose={close} onSaved={() => onLogged?.()} />
       )}
 
+      {(open === 'phq9' || open === 'gad7') && (
+        <Questionnaire profile={profile} kind={open} onClose={close} onSaved={() => onLogged?.()} />
+      )}
+
+      {open === 'meditation' && (
+        <Meditation profile={profile} onClose={close} onSaved={() => onLogged?.()} />
+      )}
+
       {open === 'checkin' && (
         <CheckIn profile={profile} onClose={close} onSaved={() => onLogged?.()} />
       )}
@@ -176,7 +192,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         <DoseSheet profile={profile} meds={meds} onClose={close} onSaved={() => onLogged?.()} />
       )}
 
-      {open && open !== 'paper' && open !== 'dose' && open !== 'checkin' && (
+      {open && !OWN_SHEETS.includes(open) && (
         <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
           <form className="sheet" onSubmit={submit}>
             <h3>{SHEETS[open]}</h3>

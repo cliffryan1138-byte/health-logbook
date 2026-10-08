@@ -7,6 +7,8 @@
 // carries more weight than one reconstructed later, so exports show both and
 // mark anything written more than a day after the event.
 
+import { FORMS, DIFFICULTY, band } from './questionnaires'
+
 export const KINDS = {
   meals:    { label: 'Meals',    one: 'Meal',     time: 'eaten_at', icon: 'flame' },
   symptoms: { label: 'Symptoms', one: 'Symptom',  time: 'felt_at',  icon: 'pulse' },
@@ -15,6 +17,9 @@ export const KINDS = {
   med_doses: { label: 'Medicine', one: 'Medicine', time: 'taken_at', icon: 'pill' },
   // One row per day (a date, not a moment): placed at local noon on the timeline.
   daily_checkins: { label: 'Check-ins', one: 'Check-in', time: 'day', icon: 'moon' },
+  // Mental health: left out of exports unless the person includes them.
+  assessments: { label: 'Questionnaires', one: 'Questionnaire', time: 'taken_at', icon: 'mind', mind: true },
+  meditations: { label: 'Meditation', one: 'Meditation', time: 'done_at', icon: 'leaf', mind: true },
 }
 
 // When an entry happened. A check-in's `day` is a plain date; new Date() would
@@ -64,6 +69,16 @@ export function describe(kind, r) {
     }
   }
   if (kind === 'daily_checkins') return describeCheckin(r)
+  if (kind === 'assessments') {
+    const f = FORMS[r.kind]
+    return { title: `${f.name} · ${f.about}`, stats: `${r.score} of ${f.max} · ${band(r.kind, r.score)}`,
+      detail: r.difficulty ? `Difficulty: ${DIFFICULTY.find(([k]) => k === r.difficulty)?.[1]}` : '' }
+  }
+  if (kind === 'meditations') {
+    return { title: `Meditation · ${r.minutes} min`, stats: [r.kind?.replace('_', ' '),
+      r.mood_before_1_5 != null && r.mood_after_1_5 != null && `mood ${r.mood_before_1_5} → ${r.mood_after_1_5}`].filter(Boolean).join(' · '),
+      detail: r.notes || '' }
+  }
   const bits = []
   if (r.weight_lb != null) bits.push(`${n(r.weight_lb, 1)} lb`)
   if (r.bp_systolic != null) bits.push(`BP ${r.bp_systolic}/${r.bp_diastolic ?? '—'}`)
@@ -154,6 +169,8 @@ const COLS = {
   daily_checkins: ['sleep_hr', 'sleep_quality_1_5', 'woke_at_night', 'mood_1_5', 'stress_1_5', 'energy_1_5', 'water_glasses',
     'caffeine_cups', 'alcohol_drinks', 'alcohol_type', 'bowel', 'bloating', 'reflux', 'period', 'hot_flashes_1_5',
     'night_sweats_1_5', 'missed_work', 'bed_rest', 'needed_help', 'couldnt_drive', 'notes'],
+  assessments: ['kind', 'answers', 'score', 'difficulty'],
+  meditations: ['minutes', 'kind', 'mood_before_1_5', 'mood_after_1_5', 'notes'],
 }
 
 export function toCSV(entries) {
