@@ -84,15 +84,23 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   const open = openKind !== undefined ? openKind : openInner
   const setOpen = (k) => { setOpenInner(k); onOpenChange?.(k) }
 
-  function openSheet(kind) { setEditing(null); setForm(kind === 'symptom' ? { felt_at: localNow() } : {}); setErr(''); setOpen(kind) }
+  // Meals, vitals and exercise carry a "when" (form.at), now by default and
+  // changeable, so something from earlier can be logged at its real time.
+  const TIMED = { meal: 'eaten_at', vitals: 'taken_at', exercise: 'done_at' }
+  function openSheet(kind) {
+    setEditing(null)
+    setForm(kind === 'symptom' ? { felt_at: localNow() } : TIMED[kind] ? { at: localNow() } : {})
+    setErr(''); setOpen(kind)
+  }
   function close() { setOpen(null); if (editing) { setEditing(null); onEditDone?.() } }
 
   useEffect(() => {
     if (!editEntry || !EDIT_SHEET[editEntry.kind]) return
     const row = editEntry.row
     setEditing(editEntry); setErr('')
+    const timeCol = TIMED[EDIT_SHEET[editEntry.kind]]
     if (editEntry.kind === 'symptoms') setForm({ ...asText(row), felt_at: toLocalInput(row.felt_at), details: [] })
-    else setForm(asText(row))
+    else setForm({ ...asText(row), ...(timeCol ? { at: toLocalInput(row[timeCol]) } : {}) })
     setOpen(EDIT_SHEET[editEntry.kind])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editEntry])
@@ -122,7 +130,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   // even if the save then fails. With no connection the reading waits on the
   // phone and saves later.
   async function saveReading(row) {
-    if (editing) { checkReading({ ...row, taken_at: editing.row.taken_at }); return save('vitals', row) }
+    if (editing) { checkReading(row); return save('vitals', row) }
     checkReading(row)
     setBusy(true); setErr('')
     const r = await saveVitals(profile.id, row)
@@ -133,6 +141,13 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
 
   function submit(e) {
     e.preventDefault()
+    let at = null
+    if (TIMED[open]) {
+      const d = form.at ? new Date(form.at) : new Date()
+      if (Number.isNaN(d.getTime())) { setErr('Check the time.'); return }
+      if (d > new Date(Date.now() + 5 * 60000)) { setErr('That time is in the future.'); return }
+      at = d.toISOString()
+    }
     if (open === 'meal') {
       if (!form.description?.trim()) { setErr('Give the meal a short description.'); return }
       save('meals', {
@@ -148,6 +163,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         source: form.source || 'manual',
         trigger_watch: [...new Set([...(form.trigger_watch || []), ...matchTriggers(form.description, profile.watch_list)])],
         notes: form.notes?.trim() || null,
+        eaten_at: at,
       })
     } else if (open === 'vitals') {
       saveReading({
@@ -162,6 +178,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         mood_1_5: num(form.mood_1_5),
         waist_in: num(form.waist_in),
         notes: form.notes?.trim() || null,
+        taken_at: at,
       })
     } else if (open === 'exercise') {
       if (!form.activity?.trim()) { setErr('What was the activity?'); return }
@@ -170,6 +187,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         duration_min: num(form.duration_min),
         intensity: form.intensity || null,
         notes: form.notes?.trim() || null,
+        done_at: at,
       })
     } else if (open === 'symptom') {
       if (!form.symptom) { setErr('Pick a symptom.'); return }
@@ -260,6 +278,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
                 <Field label="What did you eat?">
                   <input value={form.description || ''} onChange={set('description')} placeholder="Two eggs, toast, black coffee" autoFocus />
                 </Field>
+                <Field label="When did you eat it?"><input type="datetime-local" value={form.at || ''} onChange={set('at')} /></Field>
                 <div className="row2">
                   <Field label="Calories"><input inputMode="numeric" value={form.calories || ''} onChange={set('calories')} /></Field>
                   <Field label="Protein (g)"><input inputMode="numeric" value={form.protein_g || ''} onChange={set('protein_g')} /></Field>
@@ -284,7 +303,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
                 </div>
                 <div className="row2">
                   <Field label="Glucose (mg/dL)"><input inputMode="numeric" value={form.glucose_mgdl || ''} onChange={set('glucose_mgdl')} /></Field>
-                  <Field label="When">
+                  <Field label="Before or after a meal?">
                     <select value={form.glucose_context || 'fasting'} onChange={set('glucose_context')}>
                       {GLUCOSE_CONTEXTS.map((c) => <option key={c} value={c}>{c}</option>)}
                     </select>
@@ -302,6 +321,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
                   <Field label="Energy 1–5"><input inputMode="numeric" value={form.energy_1_5 || ''} onChange={set('energy_1_5')} /></Field>
                   <Field label="Mood 1–5"><input inputMode="numeric" value={form.mood_1_5 || ''} onChange={set('mood_1_5')} /></Field>
                 </div>
+                <Field label="When were these taken?"><input type="datetime-local" value={form.at || ''} onChange={set('at')} /></Field>
                 <Field label="Notes"><textarea rows={2} value={form.notes || ''} onChange={set('notes')} /></Field>
               </>
             )}
@@ -311,6 +331,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
                 <Field label="Activity">
                   <input value={form.activity || ''} onChange={set('activity')} placeholder="Walk, weights, swim" autoFocus />
                 </Field>
+                <Field label="When did you do it?"><input type="datetime-local" value={form.at || ''} onChange={set('at')} /></Field>
                 <div className="row2">
                   <Field label="Minutes"><input inputMode="numeric" value={form.duration_min || ''} onChange={set('duration_min')} /></Field>
                   <Field label="Intensity">
