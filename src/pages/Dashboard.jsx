@@ -10,6 +10,7 @@ import TrendChart from '../components/TrendChart'
 import Logbook from './Logbook'
 import Workouts from './Workouts'
 import WorkoutHistory from '../components/WorkoutHistory'
+import RouteTracker from '../components/RouteTracker'
 import Medications from '../components/Medications'
 import SparkyChat from '../components/SparkyChat'
 import Settings from '../components/Settings'
@@ -110,6 +111,7 @@ export default function Dashboard() {
       ) : view === 'workouts' ? (
         <div className="grid">
           <Workouts profile={profile} onLogged={() => { logs.refresh(); setWorkoutsSaved((n) => n + 1) }} />
+          <RouteTracker profile={profile} onLogged={() => { logs.refresh(); setWorkoutsSaved((n) => n + 1) }} />
           <WorkoutHistory profile={profile} key={workoutsSaved} />
         </div>
       ) : view === 'logbook' ? (

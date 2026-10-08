@@ -1,5 +1,8 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { loadWorkoutHistory } from '../lib/workouts'
+import { loadRoute, fmtMiles, fmtPace } from '../lib/routes'
+
+const RouteMap = lazy(() => import('./RouteMap'))
 
 // Finished workouts, newest first, each opening to the sets done. Came over
 // from Sparky Fit's History tab when fitness moved back into Daybook.
@@ -9,6 +12,7 @@ const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { weekday: '
 export default function WorkoutHistory({ profile }) {
   const [rows, setRows] = useState(undefined)
   const [err, setErr] = useState('')
+  const [opened, setOpened] = useState({}) // routes load the first time a workout is opened
 
   useEffect(() => {
     loadWorkoutHistory(profile.id).then(setRows).catch((e) => { setErr(e.message || 'Couldn’t load your history.'); setRows([]) })
@@ -24,11 +28,12 @@ export default function WorkoutHistory({ profile }) {
       {rows.map((w) => {
         const moves = [...new Set(w.sets.map((s) => s.movement))]
         return (
-          <details className="card hist" key={w.id}>
+          <details className="card hist" key={w.id} onToggle={(e) => e.currentTarget.open && w.distance_m != null && setOpened((o) => ({ ...o, [w.id]: true }))}>
             <summary>
               <b>{w.activity}</b>
-              <span>{fmtDay(w.done_at)}{w.duration_min ? ` · ${w.duration_min} min` : ''} · {w.sets.length} set{w.sets.length === 1 ? '' : 's'}</span>
+              <span>{fmtDay(w.done_at)}{w.distance_m != null ? ` · ${fmtMiles(w.distance_m)}` : ''}{w.duration_min ? ` · ${w.duration_min} min` : ''}{w.distance_m != null ? ` · ${fmtPace(w.duration_min * 60, w.distance_m)}` : ` · ${w.sets.length} set${w.sets.length === 1 ? '' : 's'}`}</span>
             </summary>
+            {opened[w.id] && <RouteOf id={w.id} />}
             {w.notes && <p className="note">{w.notes}</p>}
             {moves.map((m) => (
               <div className="hist-move" key={m}>
@@ -45,4 +50,13 @@ export default function WorkoutHistory({ profile }) {
       })}
     </div>
   )
+}
+
+// A saved route's map, loaded when its workout is first opened.
+function RouteOf({ id }) {
+  const [route, setRoute] = useState(undefined)
+  useEffect(() => { loadRoute(id).then(setRoute).catch(() => setRoute(null)) }, [id])
+  if (route === undefined) return <div className="route-map" style={{ height: 200 }} />
+  if (!route?.points?.length) return null
+  return <Suspense fallback={<div className="route-map" style={{ height: 200 }} />}><RouteMap points={route.points} height={200} /></Suspense>
 }
