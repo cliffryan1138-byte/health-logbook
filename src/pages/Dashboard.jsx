@@ -16,6 +16,7 @@ import Settings from '../components/Settings'
 import MindCard from '../components/MindCard'
 import Pregnancy from '../components/Pregnancy'
 import { flushOutbox } from '../lib/pregnancy'
+import { moveIfReady } from '../lib/move'
 import OfflineNote from '../components/OfflineNote'
 import Icon from '../lib/icons'
 import { avg, sum, triggerMatches, fmt } from '../lib/stats'
@@ -62,7 +63,8 @@ export default function Dashboard() {
 
   // Readings kept on the phone while offline go up when the connection is back.
   useEffect(() => {
-    const send = () => flushOutbox().then((n) => { if (n) logs.refresh() })
+    // On an old address, once nothing is waiting, move to daybook.wastegate.ai.
+    const send = () => flushOutbox().then((n) => { if (!moveIfReady() && n) logs.refresh() })
     send()
     window.addEventListener('online', send)
     return () => window.removeEventListener('online', send)
