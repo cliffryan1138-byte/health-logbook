@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { shrinkToJpeg } from '../lib/images'
 import { ACCEPT, fileKind, cantReadMessage, fileToText } from '../lib/fileText'
@@ -35,7 +35,7 @@ async function reasonOf(error) {
   try { return (await error?.context?.json?.())?.error || '' } catch { return '' }
 }
 
-export default function PaperNotes({ profile, onClose, onSaved }) {
+export default function PaperNotes({ profile, onClose, onSaved, initialFile }) {
   const fileRef = useRef(null)
   const [stage, setStage] = useState('pick') // pick | reading | review
   const [drafts, setDrafts] = useState([])
@@ -45,10 +45,20 @@ export default function PaperNotes({ profile, onClose, onSaved }) {
   const [source, setSource] = useState('From paper notes.')
   const [truncated, setTruncated] = useState(false)
 
-  async function onPhoto(e) {
+  // A file picked elsewhere (Take a picture → Choose File) opens straight here.
+  const started = useRef(false)
+  useEffect(() => {
+    if (initialFile && !started.current) { started.current = true; readFile(initialFile) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFile])
+
+  function onPhoto(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (!file) return
+    if (file) readFile(file)
+  }
+
+  async function readFile(file) {
     const kind = fileKind(file)
     const isPdf = kind === 'pdf'
     if (['apple', 'old-office', 'unknown'].includes(kind)) { setErr(cantReadMessage(kind, file.name)); return }

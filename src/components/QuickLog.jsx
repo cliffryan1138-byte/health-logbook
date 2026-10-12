@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
 import PaperNotes from './PaperNotes'
+import { ACCEPT, fileKind } from '../lib/fileText'
 import { DoseSheet } from './Medications'
 import SymptomPicker from './SymptomPicker'
 import CheckIn from './CheckIn'
@@ -107,11 +108,16 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
   // Any photo goes to Sparky. No `capture` attribute on the input, so phones
-  // offer Take Photo or Photo Library.
+  // offer Take Photo, Photo Library or Choose File. A tester tapped Choose File
+  // to bring in her headache journal and found every document greyed out, so
+  // the button takes log files too and hands them to the importer.
+  const [paperFile, setPaperFile] = useState(null)
   function onPhoto(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
-    if (file) onPicture?.(file)
+    if (!file) return
+    if (fileKind(file) === 'image') onPicture?.(file)
+    else { setPaperFile(file); setOpen('paper') }
   }
 
   async function save(table, row) {
@@ -230,11 +236,12 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         <button className="talk" onClick={() => onTalk?.()} aria-label="Talk to Sparky" title="Talk to Sparky">
           <Icon name="mic" />
         </button>
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={onPhoto} />
+        <input ref={fileRef} type="file" accept={ACCEPT} hidden onChange={onPhoto} />
       </div>
 
       {open === 'paper' && (
-        <PaperNotes profile={profile} onClose={close} onSaved={() => onLogged?.()} />
+        <PaperNotes profile={profile} initialFile={paperFile} onSaved={() => onLogged?.()}
+          onClose={() => { setPaperFile(null); close() }} />
       )}
 
       {(open === 'phq9' || open === 'gad7') && (
