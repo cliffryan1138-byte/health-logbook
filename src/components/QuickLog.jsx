@@ -39,7 +39,7 @@ const CHOICES = [
   { kind: 'phq9', icon: 'mind', label: 'Mood check-up (PHQ-9)', hint: 'Nine questions about the last two weeks' },
   { kind: 'gad7', icon: 'mind', label: 'Anxiety check-up (GAD-7)', hint: 'Seven questions about the last two weeks' },
   { kind: 'meditation', icon: 'leaf', label: 'Meditation', hint: 'Minutes, kind, mood before and after' },
-  { kind: 'paper', icon: 'camera', label: 'Old notes or PDF log', hint: 'Photo of paper notes, or a PDF from another app' },
+  { kind: 'paper', icon: 'camera', label: 'Old notes or a log file', hint: 'Photo of paper notes, or a PDF, Excel, Word or text file' },
   { kind: 'talk', icon: 'mic', label: 'Talk to Sparky', hint: 'Say what happened; Sparky drafts the entries' },
 ]
 

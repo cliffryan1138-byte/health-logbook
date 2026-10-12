@@ -1,10 +1,13 @@
 import { useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { shrinkToJpeg } from '../lib/images'
+import { ACCEPT, fileKind, cantReadMessage, fileToText } from '../lib/fileText'
 
-// "Old notes or PDF log": photograph a page of a handwritten headache diary, or
-// pick a PDF exported from another app or a patient portal. Get back draft
-// entries, check and fix each one, then save the ones you keep.
+// "Old notes or a log file": photograph a page of a handwritten headache diary,
+// or pick a log file: a PDF from another app or a patient portal, or a journal
+// kept in Excel, Word, CSV or plain text (turned into text on the phone first,
+// see lib/fileText). Get back draft entries, check and fix each one, then save
+// the ones you keep.
 //
 // Nothing is saved until the person taps Save. Each saved entry gets the date
 // and time written on the paper (felt_at), while created_at stays "now" — so the
@@ -40,23 +43,36 @@ export default function PaperNotes({ profile, onClose, onSaved }) {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [source, setSource] = useState('From paper notes.')
+  const [truncated, setTruncated] = useState(false)
 
   async function onPhoto(e) {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file) return
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
+    const kind = fileKind(file)
+    const isPdf = kind === 'pdf'
+    if (['apple', 'old-office', 'unknown'].includes(kind)) { setErr(cantReadMessage(kind, file.name)); return }
     if (isPdf && file.size > MAX_PDF_MB * 1024 * 1024) {
       setErr(`That PDF is over ${MAX_PDF_MB} MB. Save a shorter date range from the other app and try again.`)
       return
     }
-    setErr(''); setPageNote(''); setStage('reading')
-    setSource(isPdf ? `Imported from ${file.name}.` : 'From paper notes.')
+    setErr(''); setPageNote(''); setTruncated(false); setStage('reading')
+    setSource(kind === 'image' ? 'From paper notes.' : `Imported from ${file.name}.`)
     try {
-      // Handwriting needs a little more resolution than a meal photo.
-      const body = isPdf
-        ? { pdf_b64: await fileToBase64(file), today: today() }
-        : { image_b64: await shrinkToJpeg(file, 2000), media_type: 'image/jpeg', today: today() }
+      let body
+      if (isPdf) body = { pdf_b64: await fileToBase64(file), today: today() }
+      else if (kind === 'image') {
+        // Handwriting needs a little more resolution than a meal photo.
+        body = { image_b64: await shrinkToJpeg(file, 2000), media_type: 'image/jpeg', today: today() }
+      } else {
+        let read
+        try { read = await fileToText(file, kind) } catch {
+          throw new Error('Couldn’t open that file. Check it opens on your phone, or save it as a PDF and try that.')
+        }
+        if (!read.text) throw new Error('That file looks empty.')
+        setTruncated(read.truncated)
+        body = { text: read.text, file_name: file.name, today: today() }
+      }
       const { data, error } = await supabase.functions.invoke('read-notes', { body })
       if (error) {
         const why = await reasonOf(error)
@@ -81,9 +97,9 @@ export default function PaperNotes({ profile, onClose, onSaved }) {
       setStage('pick')
       setErr(e?.message && e.message !== 'unreadable'
         ? e.message
-        : isPdf
-          ? 'Couldn’t read that PDF. Check it opens and shows your log, or type the entries in with Add manually → Symptom.'
-          : 'Couldn’t read that photo. Try again in good light, or type the entries in with Add manually → Symptom.')
+        : kind === 'image'
+          ? 'Couldn’t read that photo. Try again in good light, or type the entries in with Add manually → Symptom.'
+          : 'Couldn’t read that file. Check it opens and shows your log, or type the entries in with Add manually → Symptom.')
     }
   }
 
@@ -126,25 +142,26 @@ export default function PaperNotes({ profile, onClose, onSaved }) {
   return (
     <div className="scrim" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="sheet">
-        <h3>Old notes or PDF log</h3>
+        <h3>Old notes or a log file</h3>
 
-        <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" hidden onChange={onPhoto} />
+        <input ref={fileRef} type="file" accept={ACCEPT} hidden onChange={onPhoto} />
 
         {stage === 'pick' && (
           <>
             <p className="note" style={{ marginTop: 0 }}>
-              Take a photo of one page of your paper notes, or choose a PDF log exported from another
-              app or your doctor’s portal. Sparky reads it and shows you each entry to check. Nothing is
-              saved until you tap Save.
+              Take a photo of one page of your paper notes, or choose a log file: a PDF from another app
+              or your doctor’s portal, or a journal you keep in Excel, Word, CSV or a text file. Sparky reads
+              it and shows you each entry to check. Nothing is saved until you tap Save.
             </p>
             <ol className="paper-tips">
               <li>Paper: lay the page flat in good light, one page per photo.</li>
               <li>PDF: under {MAX_PDF_MB} MB. For a long history, export a few months at a time.</li>
+              <li>Numbers or Pages: export it as Excel or PDF first (••• → Export).</li>
             </ol>
             {err && <p className="err">{err}</p>}
             <div className="actions">
               <button type="button" className="btn ghost" onClick={onClose}>Cancel</button>
-              <button type="button" className="btn" onClick={() => fileRef.current?.click()}>Choose photo or PDF</button>
+              <button type="button" className="btn" onClick={() => fileRef.current?.click()}>Choose photo or file</button>
             </div>
           </>
         )}
@@ -165,6 +182,10 @@ export default function PaperNotes({ profile, onClose, onSaved }) {
                 Found {drafts.length} {drafts.length === 1 ? 'entry' : 'entries'}. Check each one against the original and fix
                 anything wrong. Untick any you don’t want.
               </p>
+            )}
+            {truncated && (
+              <p className="draft-unsure">That file is very long, so Sparky read the first part only. Save these, then
+                split the rest into a second file and import that too.</p>
             )}
 
             {drafts.map((d, i) => {
