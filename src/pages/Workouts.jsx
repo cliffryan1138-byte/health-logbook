@@ -46,9 +46,12 @@ const fmtClock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')
 export default function Workouts({ profile, onLogged }) {
   const [plan, setPlan] = useState(undefined) // undefined = loading, null = none
   const [dayId, setDayId] = useState(null)
-  // Swipe the Today card left or right to look through the plan's days.
-  const [slide, setSlide] = useState('')
-  const touch = useRef(null)
+  // The Today card's days sit side by side in a strip the phone scrolls and
+  // snaps itself (CSS scroll-snap). Reading the finger by hand (2026-10-21,
+  // #39) passed a desktop test and failed on iPhones, where a swipe that
+  // drifts at all becomes a page scroll and the touch is cancelled.
+  const trackRef = useRef(null)
+  const settle = useRef(0)
   const [last, setLast] = useState({})
   const [lastDone, setLastDone] = useState(null)
   const [session, setSession] = useState(() => loadSession(profile.id))
@@ -89,6 +92,35 @@ export default function Workouts({ profile, onLogged }) {
   const weekNote = plan?.week_notes?.find((w) => w.week === week)?.text
   // A session in progress wins; otherwise the day picked, otherwise today's.
   const activeDay = plan?.days.find((d) => d.id === (session?.dayId || dayId)) || today.day
+  const shownIdx = plan?.days ? plan.days.findIndex((d) => d.id === activeDay?.id) : -1
+
+  // Keep the strip on the chosen day: on first show, and after a chip or ‹ ›.
+  const placed = useRef(false)
+  const gliding = useRef(0) // when the strip last started moving on its own
+  useEffect(() => {
+    const el = trackRef.current
+    if (!el || shownIdx < 0) return
+    const left = shownIdx * el.clientWidth
+    if (Math.abs(el.scrollLeft - left) < 2) { placed.current = true; return }
+    gliding.current = Date.now()
+    el.scrollTo({ left, behavior: placed.current ? 'smooth' : 'auto' })
+    placed.current = true
+  }, [shownIdx, session, plan])
+  useEffect(() => () => clearTimeout(settle.current), [])
+
+  // After a swipe comes to rest, the day it stopped on is the chosen day. The
+  // strip's own glide to a chosen day is ignored, so a slow phone can't catch
+  // it halfway and stop on the day in between.
+  function onTrackScroll() {
+    clearTimeout(settle.current)
+    if (Date.now() - gliding.current < 700) return
+    settle.current = setTimeout(() => {
+      const el = trackRef.current
+      if (!el || !plan?.days?.length) return
+      const i = Math.max(0, Math.min(plan.days.length - 1, Math.round(el.scrollLeft / el.clientWidth)))
+      if (plan.days[i].id !== activeDay?.id) setDayId(plan.days[i].id)
+    }, 120)
+  }
 
   if (plan === undefined) return <div className="card empty">Loading your plan…</div>
 
@@ -133,7 +165,6 @@ export default function Workouts({ profile, onLogged }) {
     if (len < 2) return
     const i = plan.days.findIndex((d) => d.id === activeDay?.id)
     const next = i < 0 ? (n > 0 ? 0 : len - 1) : (i + n + len) % len
-    setSlide(n > 0 ? 'from-right' : 'from-left')
     setDayId(plan.days[next].id)
   }
 
@@ -211,46 +242,36 @@ export default function Workouts({ profile, onLogged }) {
       </div>
 
       {!session && (
-        <div className="card day-card"
-          onTouchStart={(e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY } }}
-          onTouchEnd={(e) => {
-            const s = touch.current
-            touch.current = null
-            if (!s) return
-            const t = e.changedTouches[0]
-            const dx = t.clientX - s.x, dy = t.clientY - s.y
-            // A clear sideways swipe, not a scroll that drifted.
-            if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) stepDay(dx < 0 ? 1 : -1)
-          }}>
+        <div className="card day-card">
           <div className="card-head"><h3>{today.rest ? 'Rest day' : 'Today'}</h3></div>
-          {today.rest && <p className="empty">Nothing is scheduled today. Recovery counts. Or pick a day below to train anyway.</p>}
+          {today.rest && <p className="empty">Nothing is scheduled today. Recovery counts. Or swipe to a day below to train anyway.</p>}
           <div className="chips tight" role="group" aria-label="Pick a day">
             {plan.days.map((d) => (
-              <button type="button" key={d.id} className="chip" aria-pressed={(dayId || today.day?.id) === d.id} onClick={() => setDayId(d.id)}>
+              <button type="button" key={d.id} className="chip" aria-pressed={activeDay?.id === d.id} onClick={() => setDayId(d.id)}>
                 {d.weekday ? WEEKDAYS[d.weekday].slice(0, 3) + ' · ' : ''}{d.title.replace(/^Day \d+\s*[—-]\s*/, '')}
               </button>
             ))}
           </div>
-          {activeDay && (
-            <div className={`day-slide ${slide}`} key={activeDay.id}>
-              <div className="day-nav">
-                {plan.days.length > 1 && <button type="button" className="day-step" aria-label="Previous day" onClick={() => stepDay(-1)}>‹</button>}
-                <h3 className="day-title">{activeDay.title}</h3>
-                {plan.days.length > 1 && <button type="button" className="day-step" aria-label="Next day" onClick={() => stepDay(1)}>›</button>}
-              </div>
-              {plan.days.length > 1 && (
-                <p className="day-count">Day {plan.days.findIndex((d) => d.id === activeDay.id) + 1} of {plan.days.length} · swipe for the others</p>
-              )}
-              {activeDay.focus && <p className="note" style={{ marginTop: 0 }}>{activeDay.focus}</p>}
-              {activeDay.notes && <p className="note day-notes">{activeDay.notes}</p>}
-              <ol className="day-preview">
-                {activeDay.exercises.map((x) => (
-                  <li key={x.id}><b>{x.name}</b> <span>{[x.sets && `${x.sets} ×`, x.reps].filter(Boolean).join(' ')}</span></li>
-                ))}
-              </ol>
-              <button type="button" className="btn" onClick={() => start(activeDay)}>Start {activeDay.title.replace(/\s*[—-].*$/, '')}</button>
-            </div>
-          )}
+          <div className="day-track" ref={trackRef} onScroll={onTrackScroll}>
+            {plan.days.map((d, i) => (
+              <section className="day-slide" key={d.id} aria-label={d.title} aria-hidden={d.id !== activeDay?.id}>
+                <div className="day-nav">
+                  {plan.days.length > 1 && <button type="button" className="day-step" aria-label="Previous day" tabIndex={d.id === activeDay?.id ? 0 : -1} onClick={() => stepDay(-1)}>‹</button>}
+                  <h3 className="day-title">{d.title}</h3>
+                  {plan.days.length > 1 && <button type="button" className="day-step" aria-label="Next day" tabIndex={d.id === activeDay?.id ? 0 : -1} onClick={() => stepDay(1)}>›</button>}
+                </div>
+                {plan.days.length > 1 && <p className="day-count">Day {i + 1} of {plan.days.length} · swipe for the others</p>}
+                {d.focus && <p className="note" style={{ marginTop: 0 }}>{d.focus}</p>}
+                {d.notes && <p className="note day-notes">{d.notes}</p>}
+                <ol className="day-preview">
+                  {d.exercises.map((x) => (
+                    <li key={x.id}><b>{x.name}</b> <span>{[x.sets && `${x.sets} ×`, x.reps].filter(Boolean).join(' ')}</span></li>
+                  ))}
+                </ol>
+                <button type="button" className="btn" tabIndex={d.id === activeDay?.id ? 0 : -1} onClick={() => start(d)}>Start {d.title.replace(/\s*[—-].*$/, '')}</button>
+              </section>
+            ))}
+          </div>
         </div>
       )}
 

@@ -610,9 +610,15 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 .plan-links { display: flex; flex-wrap: wrap; gap: 4px 18px; justify-content: center; }
 
-/* Today card: swipe, or tap ‹ ›, to look through the plan's days. pan-y keeps
-   up-and-down scrolling with the browser and leaves sideways swipes to us. */
-.day-card { touch-action: pan-y; }
+/* Today card: the plan's days side by side in a strip the phone scrolls and
+   snaps one day at a time, so a swipe is the phone's own gesture. ‹ › and
+   the chips move it too. */
+.day-track {
+  display: flex; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.day-track::-webkit-scrollbar { display: none; }
+.day-slide { flex: 0 0 100%; min-width: 0; scroll-snap-align: start; scroll-snap-stop: always; }
 .day-nav { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .day-nav .day-title { margin: 0; flex: 1; min-width: 0; }
 .day-step {
@@ -622,11 +628,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 }
 .day-step:hover { color: var(--ink); border-color: var(--accent); }
 .day-count { margin: 4px 0 0; font-size: 12.5px; color: var(--ink-faint); }
-.day-slide.from-right { animation: day-in-right .22s ease-out; }
-.day-slide.from-left { animation: day-in-left .22s ease-out; }
-@keyframes day-in-right { from { opacity: 0; transform: translateX(28px); } }
-@keyframes day-in-left { from { opacity: 0; transform: translateX(-28px); } }
-@media (prefers-reduced-motion: reduce) { .day-slide.from-right, .day-slide.from-left { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .day-track { scroll-behavior: auto; } }
 
 .rest-banner {
   position: fixed; left: 50%; transform: translateX(-50%); bottom: 86px; z-index: 22;
