@@ -111,14 +111,17 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
   // Any photo goes to Sparky. No `capture` attribute on the input, so phones
   // offer Take Photo, Photo Library or Choose File. A tester tapped Choose File
   // to bring in her headache journal and found every document greyed out, so
-  // the button takes log files too and hands them to the importer.
+  // the button takes log files too and hands them to the importer. Several
+  // pictures can be chosen at once (screenshots of one page, say); they go to
+  // Sparky together. A log file goes to the importer, which reads one.
   const [paperFile, setPaperFile] = useState(null)
   function onPhoto(e) {
-    const file = e.target.files?.[0]
+    const files = [...(e.target.files || [])]
     e.target.value = ''
-    if (!file) return
-    if (fileKind(file) === 'image') onPicture?.(file)
-    else { setPaperFile(file); setOpen('paper') }
+    if (!files.length) return
+    const doc = files.find((f) => fileKind(f) !== 'image')
+    if (doc) { setPaperFile(doc); setOpen('paper') }
+    else onPicture?.(files)
   }
 
   // Inside the tap: iPhones only allow the microphone and Sparky's voice then.
@@ -247,7 +250,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         <button className="talk" onClick={talk}>
           <Icon name="mic" /> <span className="long">Talk to Sparky</span><span className="short">Sparky</span>
         </button>
-        <input ref={fileRef} type="file" accept={ACCEPT} hidden onChange={onPhoto} />
+        <input ref={fileRef} type="file" accept={ACCEPT} multiple hidden onChange={onPhoto} />
       </div>
 
       {open === 'paper' && (
