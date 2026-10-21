@@ -108,6 +108,54 @@ export async function savePlan(profileId, draft, source = 'manual') {
   return plan
 }
 
+// Edit the active plan in place: same plan, so the week count, "today" and
+// past workouts' links to their day all carry on. Days keep their ids; a
+// removed day is deleted (finished workouts stay, unlinked). Exercises are
+// rewritten; sets already done keep the movement name they were logged under.
+export async function updatePlan(profileId, plan, draft) {
+  const { error } = await supabase.from('workout_plans').update({
+    name: draft.name.trim() || 'My plan',
+    description: draft.description?.trim() || null,
+    weeks: draft.weeks ? Number(draft.weeks) : null,
+    started_on: draft.started_on || null,
+    week_notes: (draft.week_notes || []).filter((w) => w.text?.trim()),
+  }).eq('id', plan.id).eq('profile_id', profileId)
+  if (error) throw error
+  const kept = new Set(draft.days.map((d) => d.id).filter(Boolean))
+  const gone = plan.days.map((d) => d.id).filter((id) => !kept.has(id))
+  if (gone.length) {
+    const { error: e0 } = await supabase.from('plan_days').delete().in('id', gone).eq('profile_id', profileId)
+    if (e0) throw e0
+  }
+  const { error: e1 } = await supabase.from('plan_exercises').delete().eq('plan_id', plan.id).eq('profile_id', profileId)
+  if (e1) throw e1
+  for (const [i, d] of draft.days.entries()) {
+    const fields = {
+      position: i + 1, weekday: d.weekday ? Number(d.weekday) : null,
+      title: d.title.trim() || `Day ${i + 1}`, focus: d.focus?.trim() || null, notes: d.notes?.trim() || null,
+    }
+    let dayId = d.id
+    if (dayId) {
+      const { error: e2 } = await supabase.from('plan_days').update(fields).eq('id', dayId).eq('profile_id', profileId)
+      if (e2) throw e2
+    } else {
+      const { data: day, error: e2 } = await supabase.from('plan_days')
+        .insert({ ...fields, plan_id: plan.id, profile_id: profileId }).select().single()
+      if (e2) throw e2
+      dayId = day.id
+    }
+    const rows = d.exercises.filter((x) => x.name.trim()).map((x, j) => ({
+      day_id: dayId, plan_id: plan.id, profile_id: profileId, position: j + 1,
+      name: x.name.trim(), sets: x.sets ? Number(x.sets) : null, reps: x.reps?.trim() || null,
+      rest_sec: x.rest_sec === '' || x.rest_sec == null ? null : Number(x.rest_sec), cues: x.cues?.trim() || null,
+    }))
+    if (rows.length) {
+      const { error: e3 } = await supabase.from('plan_exercises').insert(rows)
+      if (e3) throw e3
+    }
+  }
+}
+
 export async function stopPlan(profileId, planId) {
   const { error } = await supabase.from('workout_plans').update({ active: false })
     .eq('profile_id', profileId).eq('id', planId)

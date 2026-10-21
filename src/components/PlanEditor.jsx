@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { shrinkToJpeg } from '../lib/images'
-import { savePlan, WEEKDAYS } from '../lib/workouts'
+import { savePlan, updatePlan, WEEKDAYS } from '../lib/workouts'
 import { PLAN_LIBRARY, PREGNANCY_GUIDANCE, RETRIEVED, draftFrom } from '../lib/planLibrary'
 
 // Load a training plan: start from one of the built-in plans (lib/planLibrary,
@@ -12,6 +12,10 @@ import { PLAN_LIBRARY, PREGNANCY_GUIDANCE, RETRIEVED, draftFrom } from '../lib/p
 // A plan often comes as several screenshots. Choose them together and they're
 // read as one plan; or read one, then "Add more pictures" to append the rest.
 // A tester's second screenshot used to be dropped because only one was taken.
+//
+// With `plan` (the active plan) it opens straight on the editor to change that
+// plan in place: rename or remove a day, fix an exercise. Testers ended up
+// with a stray day and the only way out was loading the whole plan again.
 
 const MAX_PDF_MB = 8
 const MAX_PICTURES = 6 // matches read-plan's MAX_IMAGES
@@ -51,12 +55,31 @@ function nextMonday() {
   return d.toISOString().slice(0, 10)
 }
 
-export default function PlanEditor({ profile, onClose, onSaved }) {
+// The active plan -> editor draft. Days keep their ids so updatePlan can keep them.
+const fromPlan = (plan) => ({
+  name: plan.name || '',
+  description: plan.description || '',
+  weeks: plan.weeks ?? '',
+  started_on: plan.started_on || '',
+  week_notes: (plan.week_notes || []).map((w) => ({ week: w.week, text: w.text })),
+  days: plan.days.map((d, i) => ({
+    id: d.id,
+    title: d.title || `Day ${i + 1}`,
+    weekday: d.weekday ?? '',
+    focus: d.focus || '',
+    notes: d.notes || '',
+    exercises: d.exercises.length
+      ? d.exercises.map((x) => ({ name: x.name || '', sets: x.sets ?? '', reps: x.reps || '', rest_sec: x.rest_sec ?? '', cues: x.cues || '' }))
+      : [blankExercise()],
+  })),
+})
+
+export default function PlanEditor({ profile, plan, onClose, onSaved }) {
   const fileRef = useRef(null)
-  const [stage, setStage] = useState('start') // start | library | reading | edit
-  const [draft, setDraft] = useState(null)
-  const [source, setSource] = useState('manual')
-  const [open, setOpen] = useState(0) // which day card is expanded
+  const [stage, setStage] = useState(plan ? 'edit' : 'start') // start | library | reading | edit
+  const [draft, setDraft] = useState(() => (plan ? fromPlan(plan) : null))
+  const [source, setSource] = useState(plan ? 'existing' : 'manual')
+  const [open, setOpen] = useState(plan ? -1 : 0) // which day card is expanded
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
 
@@ -69,7 +92,12 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
   const addEx = (i) => setDraft((d) => ({ ...d, days: d.days.map((x, j) => (j === i ? { ...x, exercises: [...x.exercises, blankExercise()] } : x)) }))
   const dropEx = (i, n) => setDraft((d) => ({ ...d, days: d.days.map((x, j) => (j === i ? { ...x, exercises: x.exercises.filter((_, m) => m !== n) } : x)) }))
   const addDay = () => { setDraft((d) => ({ ...d, days: [...d.days, blankDay(d.days.length + 1)] })); setOpen(draft.days.length) }
-  const dropDay = (i) => setDraft((d) => ({ ...d, days: d.days.filter((_, j) => j !== i) }))
+  const dropDay = (i) => {
+    const d = draft.days[i]
+    if (!confirm(`Remove “${d.title || `Day ${i + 1}`}” from this plan?${plan && d.id ? ' Workouts you already finished stay in your log.' : ''}`)) return
+    setDraft((x) => ({ ...x, days: x.days.filter((_, j) => j !== i) }))
+    setOpen(-1)
+  }
 
   function startBlank() {
     setDraft({ name: '', description: '', weeks: '', started_on: nextMonday(), week_notes: [], days: [blankDay(1)] })
@@ -141,7 +169,8 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
     if (!draft.days.some((d) => d.exercises.some((x) => x.name.trim()))) { setErr('Add at least one exercise.'); return }
     setBusy(true); setErr('')
     try {
-      await savePlan(profile.id, draft, source)
+      if (plan) await updatePlan(profile.id, plan, draft)
+      else await savePlan(profile.id, draft, source)
       onSaved?.()
       onClose()
     } catch (e) {
@@ -154,7 +183,7 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
   return (
     <div className="scrim" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="sheet plan-sheet">
-        <h3>{stage === 'edit' ? 'Check your plan' : 'Load a training plan'}</h3>
+        <h3>{plan ? 'Edit your plan' : stage === 'edit' ? 'Check your plan' : 'Load a training plan'}</h3>
         <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" multiple hidden onChange={onFile} />
 
         {stage === 'start' && (
@@ -227,7 +256,12 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
                 {draft.description} Check the start date, change any day or exercise you like, then save. Each exercise’s steps are under “How to” during a workout.
               </p>
             )}
-            {source !== 'manual' && source !== 'library' && (
+            {plan && (
+              <p className="note" style={{ marginTop: 0 }}>
+                Tap a day to rename it, change its exercises or remove it. Your finished workouts aren’t changed.
+              </p>
+            )}
+            {source !== 'manual' && source !== 'library' && source !== 'existing' && (
               <p className="note" style={{ marginTop: 0 }}>
                 Found {draft.days.length} days and {exCount} exercises. Check each day against your plan and fix anything wrong.
                 {' '}Missing part of it? Add more pictures below.
@@ -295,7 +329,7 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
             {err && <p className="err">{err}</p>}
             <div className="actions">
               <button type="button" className="btn ghost" onClick={onClose} disabled={busy}>Cancel</button>
-              <button type="button" className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : 'Save plan'}</button>
+              <button type="button" className="btn" onClick={save} disabled={busy}>{busy ? 'Saving…' : plan ? 'Save changes' : 'Save plan'}</button>
             </div>
           </>
         )}
