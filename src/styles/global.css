@@ -673,12 +673,17 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 
 /* ── dock: picture · add · talk to Sparky ─────────────────────────────────
    The mic is gold, Sparky's own colour, so it reads as "talk to him" rather
-   than another way to add a form. Labels shorten on a phone so all three fit. */
+   than another way to add a form. It carries a label: a bare mic hid the chat
+   behind it. Labels shorten on a phone so all three fit. */
 .dock .talk {
-  width: 44px; height: 44px; flex: none; border-radius: 999px; display: grid; place-items: center;
+  display: flex; align-items: center; gap: 7px; flex: none; white-space: nowrap;
+  min-height: 44px; padding: 10px 16px; border-radius: 999px;
   background: var(--gold); color: var(--gold-ink); border: 0; cursor: pointer;
+  font-size: 15px; font-weight: 600;
 }
-.dock .talk svg { width: 20px; height: 20px; }
+.dock .talk svg { width: 19px; height: 19px; }
+@media (max-width: 400px) { .dock .talk { padding: 10px 14px; font-size: 14px; } }
+.chat-hint { margin: 6px 0 0; }
 .dock .short { display: none; }
 @media (max-width: 440px) {
   .dock .long { display: none; }

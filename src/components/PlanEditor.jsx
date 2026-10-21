@@ -8,8 +8,13 @@ import { PLAN_LIBRARY, PREGNANCY_GUIDANCE, RETRIEVED, draftFrom } from '../lib/p
 // public-domain NIA exercises), read it from a PDF or photo (the read-plan
 // function), or build it by hand — either way it lands in the same editor, and nothing
 // is saved until Save. Saving makes it the active plan.
+//
+// A plan often comes as several screenshots. Choose them together and they're
+// read as one plan; or read one, then "Add more pictures" to append the rest.
+// A tester's second screenshot used to be dropped because only one was taken.
 
 const MAX_PDF_MB = 8
+const MAX_PICTURES = 6 // matches read-plan's MAX_IMAGES
 const blankExercise = () => ({ name: '', sets: '', reps: '', rest_sec: '', cues: '' })
 const blankDay = (n) => ({ title: `Day ${n}`, weekday: '', focus: '', notes: '', exercises: [blankExercise()] })
 
@@ -21,6 +26,17 @@ function fileToBase64(file) {
     r.readAsDataURL(file)
   })
 }
+
+// read-plan's days -> editor days.
+const toDays = (days) => (days || []).map((d, i) => ({
+  title: d.title || `Day ${i + 1}`,
+  weekday: d.weekday ?? '',
+  focus: d.focus || '',
+  notes: d.notes || '',
+  exercises: (d.exercises || []).map((x) => ({
+    name: x.name || '', sets: x.sets ?? '', reps: x.reps || '', rest_sec: x.rest_sec ?? '', cues: x.cues || '',
+  })),
+}))
 
 async function reasonOf(error) {
   try { return (await error?.context?.json?.())?.error || '' } catch { return '' }
@@ -65,39 +81,58 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
     setSource('library'); setOpen(0); setStage('edit')
   }
 
+  // `adding` = these pictures continue the plan already in the editor.
+  const [adding, setAdding] = useState(false)
+  const [reading, setReading] = useState(0)
+  const pick = (more) => { setAdding(more); fileRef.current?.click() }
+
   async function onFile(e) {
-    const file = e.target.files?.[0]
+    const files = [...(e.target.files || [])]
     e.target.value = ''
-    if (!file) return
-    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name)
-    if (isPdf && file.size > MAX_PDF_MB * 1024 * 1024) { setErr(`That PDF is over ${MAX_PDF_MB} MB.`); return }
-    setErr(''); setStage('reading')
+    if (!files.length) return
+    const isPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name)
+    const pdf = files.find(isPdf)
+    const pics = files.filter((f) => !isPdf(f))
+    if (pdf && (pics.length || files.length > 1)) { setErr('Choose one PDF at a time, or pictures.'); return }
+    if (pdf && pdf.size > MAX_PDF_MB * 1024 * 1024) { setErr(`That PDF is over ${MAX_PDF_MB} MB.`); return }
+    if (pics.length > MAX_PICTURES) { setErr(`Up to ${MAX_PICTURES} pictures at a time. Choose the first ${MAX_PICTURES}, then Add more pictures.`); return }
+    const back = adding ? 'edit' : 'start'
+    setErr(''); setReading(pdf ? 1 : pics.length); setStage('reading')
     try {
-      const body = isPdf
-        ? { pdf_b64: await fileToBase64(file) }
-        : { image_b64: await shrinkToJpeg(file, 2000), media_type: 'image/jpeg' }
+      // Several pictures go smaller so the upload stays quick on cellular.
+      const size = pics.length > 2 ? 1568 : 2000
+      const images = pdf ? [] : await Promise.all(pics.map((f) => shrinkToJpeg(f, size)))
+      // image_b64 too, so a read-plan deployed before images_b64 still reads the first.
+      const body = pdf
+        ? { pdf_b64: await fileToBase64(pdf) }
+        : { images_b64: images, image_b64: images[0], media_type: 'image/jpeg' }
       const { data, error } = await supabase.functions.invoke('read-plan', { body })
       if (error) throw new Error((await reasonOf(error)) || 'unreadable')
       if (!data?.days?.length) throw new Error(data?.page_note || 'No training days found in that file.')
-      setDraft({
-        name: data.name || '',
-        description: data.description || '',
-        weeks: data.weeks ?? '',
-        started_on: nextMonday(),
-        week_notes: (data.week_notes || []).map((w) => ({ week: w.week, text: w.text })),
-        days: data.days.map((d, i) => ({
-          title: d.title || `Day ${i + 1}`,
-          weekday: d.weekday ?? '',
-          focus: d.focus || '',
-          notes: d.notes || '',
-          exercises: (d.exercises || []).map((x) => ({
-            name: x.name || '', sets: x.sets ?? '', reps: x.reps || '', rest_sec: x.rest_sec ?? '', cues: x.cues || '',
-          })),
-        })),
-      })
-      setSource(isPdf ? 'pdf' : 'photo'); setOpen(0); setStage('edit')
+      if (adding && draft) {
+        setDraft((d) => ({
+          ...d,
+          name: d.name || data.name || '',
+          description: d.description || data.description || '',
+          weeks: d.weeks || (data.weeks ?? ''),
+          week_notes: d.week_notes.length ? d.week_notes : (data.week_notes || []).map((w) => ({ week: w.week, text: w.text })),
+          days: [...d.days, ...toDays(data.days)],
+        }))
+        setOpen(draft.days.length)
+      } else {
+        setDraft({
+          name: data.name || '',
+          description: data.description || '',
+          weeks: data.weeks ?? '',
+          started_on: nextMonday(),
+          week_notes: (data.week_notes || []).map((w) => ({ week: w.week, text: w.text })),
+          days: toDays(data.days),
+        })
+        setSource(pdf ? 'pdf' : 'photo'); setOpen(0)
+      }
+      setStage('edit')
     } catch (e2) {
-      setStage('start')
+      setStage(back)
       setErr(e2?.message && e2.message !== 'unreadable' ? e2.message : 'Couldn’t read that file. Try a PDF, or build the plan by hand.')
     }
   }
@@ -120,20 +155,20 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
     <div className="scrim" onClick={(e) => e.target === e.currentTarget && !busy && onClose()}>
       <div className="sheet plan-sheet">
         <h3>{stage === 'edit' ? 'Check your plan' : 'Load a training plan'}</h3>
-        <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" hidden onChange={onFile} />
+        <input ref={fileRef} type="file" accept="image/*,application/pdf,.pdf" multiple hidden onChange={onFile} />
 
         {stage === 'start' && (
           <>
             <p className="note" style={{ marginTop: 0 }}>
-              Choose a PDF or a photo of your plan and Sparky turns it into days, exercises, sets and reps.
-              You check it before anything is saved. Or build one yourself.
+              Choose a PDF, or one or more photos or screenshots of your plan, and Sparky turns it into days,
+              exercises, sets and reps. You check it before anything is saved. Or build one yourself.
             </p>
             <div className="choose">
               <button type="button" className="choice" onClick={() => setStage('library')}>
                 <span className="choice-text"><b>Start from a plan</b><span>Beginner, older adults, or getting back into it, from the National Institute on Aging</span></span>
               </button>
-              <button type="button" className="choice" onClick={() => fileRef.current?.click()}>
-                <span className="choice-text"><b>From a PDF or photo</b><span>Your coach’s or doctor’s plan, a printout, a screenshot</span></span>
+              <button type="button" className="choice" onClick={() => pick(false)}>
+                <span className="choice-text"><b>From a PDF or pictures</b><span>Your coach’s or doctor’s plan, a printout, screenshots — pick them all at once</span></span>
               </button>
               <button type="button" className="choice" onClick={startBlank}>
                 <span className="choice-text"><b>Build it by hand</b><span>Add days and exercises yourself</span></span>
@@ -181,7 +216,7 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
         {stage === 'reading' && (
           <div className="paper-reading">
             <img src="/sparky.png" alt="" width="64" height="64" />
-            <p>Sparky is reading your plan… this can take a minute or two.</p>
+            <p>Sparky is reading {reading > 1 ? `your ${reading} pictures` : 'your plan'}… this can take a minute or two.</p>
           </div>
         )}
 
@@ -195,6 +230,7 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
             {source !== 'manual' && source !== 'library' && (
               <p className="note" style={{ marginTop: 0 }}>
                 Found {draft.days.length} days and {exCount} exercises. Check each day against your plan and fix anything wrong.
+                {' '}Missing part of it? Add more pictures below.
               </p>
             )}
             <label className="field"><span>Plan name</span><input value={draft.name} onChange={setPlan('name')} placeholder="The Three-Limb Protocol" /></label>
@@ -240,7 +276,10 @@ export default function PlanEditor({ profile, onClose, onSaved }) {
                 )}
               </fieldset>
             ))}
-            <button type="button" className="btn ghost more" onClick={addDay}>Add a day</button>
+            <div className="actions">
+              <button type="button" className="btn ghost" onClick={addDay}>Add a day</button>
+              <button type="button" className="btn ghost" onClick={() => pick(true)}>Add more pictures</button>
+            </div>
 
             {draft.week_notes.length > 0 && (
               <details className="as-table">
