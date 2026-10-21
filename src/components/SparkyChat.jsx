@@ -18,8 +18,9 @@ import { SR, TTS, newRecognizer, takeListening, micProblem } from '../lib/voice'
 //     what happened ("took two Advil at noon"). Sparky drafts the entry; you
 //     tap Save. Nothing is written without that tap.
 //
-// Photos: "Take a picture" opens this sheet with the photo already sent, and
-// the camera button here sends more. Sparky works out what each photo shows —
+// Photos: "Take a picture" opens this sheet with the photos already sent, and
+// the camera button here sends more. Up to MAX_PHOTOS can go in one message
+// (screenshots of one page, a label front and back), read together. Sparky works out what each photo shows —
 // a meal, a medicine label, a meter, a rash, paper notes — and drafts what
 // fits. Photos are shrunk on the phone and never stored; the entries you save
 // are the record.
@@ -46,6 +47,8 @@ function localClock() {
 }
 
 // Turn the model's drafts into one flat list of { kind, row, title, stats }.
+const MAX_PHOTOS = 6 // per message, and in all per request: sparky-chat's limits
+
 function flatten(drafts, photo) {
   const out = []
   for (const kind of Object.keys(TABLE)) {
@@ -63,7 +66,7 @@ function flatten(drafts, photo) {
 
 const LABEL = { meals: 'Meal', vitals: 'Vitals', exercise: 'Exercise', symptoms: 'Symptom', doses: 'Medicine', medications: 'Medication list' }
 
-export default function SparkyChat({ profile, meds, onLogged, onClose, listenFirst, firstPhoto }) {
+export default function SparkyChat({ profile, meds, onLogged, onClose, listenFirst, firstPhotos }) {
   const [msgs, setMsgs] = useState([]) // { role, text, drafts?: [{..., saved}] }
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
@@ -93,7 +96,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
     // second start would come too late for an iPhone.
     if (sentFirst.current) return
     sentFirst.current = true
-    if (firstPhoto) sendPhoto(firstPhoto)
+    if (firstPhotos?.length) sendPhotos(firstPhotos)
     else if (listenFirst) {
       // The dock's tap already started the microphone (lib/voice); take it over.
       const started = takeListening()
@@ -191,36 +194,44 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
     startVoice()
   }
 
-  // A photo, with whatever is typed in the box as its caption.
-  async function sendPhoto(file) {
-    if (!file || busy) return
+  // Photos, with whatever is typed in the box as their caption.
+  async function sendPhotos(files) {
+    if (!files?.length || busy) return
     setErr('')
-    let image
-    try { image = await shrinkToJpeg(file) } catch {
-      setErr('Couldn’t open that picture. Try another, or take a new one.')
+    if (files.length > MAX_PHOTOS) { setErr(`Up to ${MAX_PHOTOS} pictures at a time. Send the rest in a second message.`); return }
+    let images
+    try { images = await Promise.all(files.map((f) => shrinkToJpeg(f))) } catch {
+      setErr(files.length > 1 ? 'Couldn’t open one of those pictures. Try again without it.' : 'Couldn’t open that picture. Try another, or take a new one.')
       return
     }
-    send(undefined, false, image)
+    send(undefined, false, images)
   }
 
-  async function send(said, spoken = false, image = null) {
+  async function send(said, spoken = false, images = null) {
     const line = (said ?? text).trim()
-    if ((!line && !image) || busy) return
+    if ((!line && !images?.length) || busy) return
     setText(''); setErr('')
     // Self-harm words, typed or spoken, open the 988 card on the phone at once,
     // before (and whether or not) the message reaches Sparky.
     checkCrisis(line)
-    const next = [...msgsRef.current, { role: 'user', text: line, image }]
+    const next = [...msgsRef.current, { role: 'user', text: line, images }]
     setMsgs(next)
     setBusy(true)
     try {
-      // The function only shows the model the two newest photos; sending older
-      // ones would just slow the upload, so they go as text.
-      const recent = next.map((m, i) => (m.image ? i : -1)).filter((i) => i >= 0).slice(-2)
+      // The function only shows the model the newest MAX_PHOTOS photos (whole
+      // messages, newest first); sending older ones would just slow the upload.
+      const recent = new Set()
+      let room = MAX_PHOTOS
+      for (let i = next.length - 1; i >= 0 && room > 0; i--) {
+        const n = next[i].images?.length || 0
+        if (n && n <= room) { recent.add(i); room -= n } else if (n) break
+      }
       const { data, error } = await supabase.functions.invoke('sparky-chat', {
         body: {
-          messages: next.map(({ role, text: t, image: img }, i) => (
-            img && recent.includes(i) ? { role, text: t, image_b64: img } : { role, text: img && !t ? '[photo shared earlier]' : t }
+          // image_b64 too: a sparky-chat deployed before images_b64 reads the first.
+          messages: next.map(({ role, text: t, images: imgs }, i) => (
+            imgs?.length && recent.has(i) ? { role, text: t, images_b64: imgs, image_b64: imgs[0] }
+              : { role, text: imgs?.length && !t ? '[photo shared earlier]' : t }
           )),
           now: localClock(),
         },
@@ -230,7 +241,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
         try { msg = (await error?.context?.json?.())?.error } catch { /* not JSON */ }
         throw new Error(msg || data?.error || 'Sparky couldn’t answer just now. Try again.')
       }
-      setMsgs((m) => [...m, { role: 'assistant', text: data.reply, drafts: flatten(data.drafts, Boolean(image)) }])
+      setMsgs((m) => [...m, { role: 'assistant', text: data.reply, drafts: flatten(data.drafts, Boolean(images?.length)) }])
       // Sparky's own judgment, for words the phone's list missed.
       if (data.crisis) openCrisis()
       if (spoken && handsRef.current) speak(data.reply, () => { if (handsRef.current) listen() })
@@ -311,8 +322,14 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
             </div>
           )}
           {msgs.map((m, i) => (
-            <div key={i} className={`bubble ${m.role}${m.image ? ' has-photo' : ''}`}>
-              {m.image && <img className="bubble-photo" src={`data:image/jpeg;base64,${m.image}`} alt="Your photo" />}
+            <div key={i} className={`bubble ${m.role}${m.images?.length ? ' has-photo' : ''}`}>
+              {m.images?.length > 0 && (
+                <div className={m.images.length > 1 ? 'bubble-photos' : undefined}>
+                  {m.images.map((img, k) => (
+                    <img key={k} className="bubble-photo" src={`data:image/jpeg;base64,${img}`} alt={m.images.length > 1 ? `Your photo ${k + 1}` : 'Your photo'} />
+                  ))}
+                </div>
+              )}
               {m.text && <p>{m.text}</p>}
               {m.drafts?.length > 0 && (
                 <ul className="drafts">
@@ -332,7 +349,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
               )}
             </div>
           ))}
-          {busy && <div className="bubble assistant thinking"><p>{msgs[msgs.length - 1]?.image ? 'Sparky is looking at your picture…' : 'Sparky is thinking…'}</p></div>}
+          {busy && <div className="bubble assistant thinking"><p>{msgs[msgs.length - 1]?.images?.length > 1 ? 'Sparky is looking at your pictures…' : msgs[msgs.length - 1]?.images?.length ? 'Sparky is looking at your picture…' : 'Sparky is thinking…'}</p></div>}
           <div ref={endRef} />
         </div>
 
@@ -340,8 +357,8 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
         {!err && hint && <p className="note chat-hint">{hint}</p>}
 
         <form className="chat-bar" onSubmit={(e) => { e.preventDefault(); send() }}>
-          <input ref={camRef} type="file" accept="image/*" hidden
-            onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; sendPhoto(f) }} />
+          <input ref={camRef} type="file" accept="image/*" multiple hidden
+            onChange={(e) => { const f = [...(e.target.files || [])]; e.target.value = ''; sendPhotos(f) }} />
           <button type="button" className="cam" aria-label="Send a picture" title="Send a picture"
             disabled={busy} onClick={() => camRef.current?.click()}>
             <Icon name="camera" />

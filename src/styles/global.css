@@ -738,6 +738,9 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .bubble.has-photo { padding: 6px; }
 .bubble.has-photo p { padding: 4px 7px 2px; }
 .bubble-photo { display: block; max-width: 100%; max-height: 220px; border-radius: 12px; object-fit: cover; }
+/* Several photos in one message: a grid of squares, two across. */
+.bubble-photos { display: grid; grid-template-columns: repeat(2, 116px); gap: 4px; }
+.bubble-photos .bubble-photo { width: 100%; aspect-ratio: 1; height: auto; max-height: none; border-radius: 10px; }
 .chat-bar .cam {
   flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; cursor: pointer;
   background: var(--surface); color: var(--ink); border: 1.5px solid var(--line-strong);

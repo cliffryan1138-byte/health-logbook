@@ -55,7 +55,7 @@ export default function Dashboard() {
   // A saved entry being edited from the Logbook ({ kind, row }); QuickLog opens its form.
   const [editEntry, setEditEntry] = useState(null)
   // null = closed; 'type', 'talk' (starts the mic straight away), or
-  // { photo: File } from "Take a picture" (Sparky reads it straight away).
+  // { photos: File[] } from "Take a picture" (Sparky reads them straight away).
   const [chat, setChat] = useState(null)
   // Bumped when a workout is saved, so Past workouts reloads.
   const [workoutsSaved, setWorkoutsSaved] = useState(0)
@@ -138,11 +138,11 @@ export default function Dashboard() {
 
       <div className="screen-only">
         <QuickLog profile={profile} meds={logs.medications} onLogged={logs.refresh} openKind={logKind} onOpenChange={setLogKind}
-          onTalk={() => setChat('talk')} onPicture={(photo) => setChat({ photo })}
+          onTalk={() => setChat('talk')} onPicture={(photos) => setChat({ photos })}
           editEntry={editEntry} onEditDone={() => setEditEntry(null)} />
         {chat && (
           <SparkyChat profile={profile} meds={logs.medications} onLogged={logs.refresh}
-            listenFirst={chat === 'talk'} firstPhoto={chat.photo} onClose={() => setChat(null)} />
+            listenFirst={chat === 'talk'} firstPhotos={chat.photos} onClose={() => setChat(null)} />
         )}
         <InstallPrompt />
         {settings && <Settings profile={profile} onClose={() => setSettings(false)} onSaved={refreshProfile} />}

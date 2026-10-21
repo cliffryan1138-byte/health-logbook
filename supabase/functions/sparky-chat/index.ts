@@ -9,9 +9,11 @@
 //
 // Photos (2026-10-07): "Take a picture" sends any photo here — a plate, a pill
 // bottle, a blood-pressure screen, a rash, paper notes — and Sparky works out
-// what it is and drafts what fits. A user turn may carry `image_b64` (JPEG,
-// already shrunk by the app). Only the two most recent photos are sent to the
-// model; older ones become "[photo shared earlier]". Photos are not stored.
+// what it is and drafts what fits. A user turn may carry `images_b64` (up to
+// MAX_TURN_PHOTOS JPEGs, already shrunk by the app; 2026-10-21, so several
+// screenshots go in one message) or a single `image_b64`. Only the newest
+// MAX_SENT_PHOTOS photos are sent to the model; older ones become "[photo
+// shared earlier]". Photos are not stored.
 //
 // Requires the ANTHROPIC_API_KEY secret (already set for `capture`). Deploy
 // with verify_jwt on, so only signed-in users can call it.
@@ -144,6 +146,8 @@ Photos. People photograph anything; work out what it shows and draft what fits. 
 - Medicine (bottle, box, label, blister pack, pills): read the name and strength exactly as printed. If it isn't on their medication list, draft adding it, with the schedule from the label's directions and as_needed when the label says "as needed". If it is on the list, ask whether they just took some, and draft a dose only once they say so (or their message already says so). Never guess a medicine from what pills look like; if the name can't be read, say so and ask.
 - A screen or device (blood pressure monitor, glucose meter, scale, thermometer, watch, fitness app): a vitals or exercise draft with exactly the numbers shown.
 - Paper notes or a log: a draft per entry, with each entry's own date and time. Severity only as written.
+- A training plan or workout routine: you can't save plans. Say so briefly and tell them to use Workouts, then Load a plan, then From a PDF or pictures, where they can choose all the screenshots at once. A workout they say they already did is an exercise draft.
+- Several pictures in one message usually belong together (screenshots of one page, a label's front and back, a meal from two sides). Read them as one, and don't draft the same thing twice.
 - Anything else (a rash, swelling, a bruise, an injury, a document): describe it in plain, neutral words. If it goes with a symptom, ask how bad it is (1 to 5) and draft the symptom with your description in notes once they answer. Never diagnose or name a condition from a photo.
 - Read numbers and names exactly. If something is blurry or cut off, say what you can't read instead of guessing.
 - Labels and documents carry private details (the person's name, address, prescription number, pharmacy, prescriber). Don't repeat them back or put them in drafts.
@@ -168,6 +172,8 @@ type Row = Record<string, unknown>;
 const DAY = 86400000;
 // The app sends JPEGs at most 1568 px on the long side, usually 200–500 KB.
 const MAX_IMAGE_B64 = 3_000_000;
+const MAX_TURN_PHOTOS = 6;
+const MAX_SENT_PHOTOS = 6;
 
 // The person's last 30 days as compact lines, newest first, capped so a heavy
 // logger still fits comfortably.
@@ -232,23 +238,35 @@ Deno.serve(async (req) => {
     const { messages, now } = await req.json();
     // The last 20 turns, each trimmed; the conversation must start and end
     // with the person. A user turn may be a photo with no words.
-    const isPhoto = (m: { role?: string; image_b64?: unknown }) =>
-      m?.role === "user" && typeof m.image_b64 === "string" && m.image_b64.length > 100 && m.image_b64.length <= MAX_IMAGE_B64;
+    const okPhoto = (x: unknown) => typeof x === "string" && x.length > 100 && x.length <= MAX_IMAGE_B64;
+    const photosOf = (m: { role?: string; image_b64?: unknown; images_b64?: unknown }): string[] =>
+      m?.role !== "user" ? [] : (Array.isArray(m.images_b64) ? m.images_b64 : [m.image_b64]).filter(okPhoto).slice(0, MAX_TURN_PHOTOS);
+    const isPhoto = (m: { role?: string; image_b64?: unknown; images_b64?: unknown }) => photosOf(m).length > 0;
     const kept = (Array.isArray(messages) ? messages : [])
       .filter((m) => (m?.role === "user" || m?.role === "assistant") &&
         ((typeof m.text === "string" && m.text.trim()) || isPhoto(m)))
       .slice(-20);
-    // Only the two newest photos go to the model: each is a few hundred KB.
-    const photoTurns = kept.map((m, i) => (isPhoto(m) ? i : -1)).filter((i) => i >= 0).slice(-2);
+    // Only the newest MAX_SENT_PHOTOS photos go to the model, counting back
+    // from the latest turn: each is a few hundred KB. A turn whose photos
+    // don't all fit sends none, so a set of screenshots is never half-read.
+    const sendPhotos = new Set<number>();
+    let budget = MAX_SENT_PHOTOS;
+    for (let i = kept.length - 1; i >= 0 && budget > 0; i--) {
+      const n = photosOf(kept[i]).length;
+      if (n && n <= budget) { sendPhotos.add(i); budget -= n }
+      else if (n) break
+    }
     const turns = kept.map((m, i) => {
       const words = typeof m.text === "string" ? m.text.slice(0, 2000) : "";
-      if (m.role !== "user" || !isPhoto(m)) return { role: m.role as "user" | "assistant", content: words };
-      if (!photoTurns.includes(i)) return { role: "user" as const, content: `[photo shared earlier] ${words}`.trim() };
+      const photos = photosOf(m);
+      if (m.role !== "user" || !photos.length) return { role: m.role as "user" | "assistant", content: words };
+      const many = photos.length > 1 ? `${photos.length} photos` : "photo";
+      if (!sendPhotos.has(i)) return { role: "user" as const, content: `[${many} shared earlier] ${words}`.trim() };
       return {
         role: "user" as const,
         content: [
-          { type: "image" as const, source: { type: "base64" as const, media_type: "image/jpeg" as const, data: m.image_b64 } },
-          { type: "text" as const, text: words || "(A photo, no message.)" },
+          ...photos.map((data) => ({ type: "image" as const, source: { type: "base64" as const, media_type: "image/jpeg" as const, data } })),
+          { type: "text" as const, text: words || (photos.length > 1 ? `(${photos.length} photos, no message.)` : "(A photo, no message.)") },
         ],
       };
     });
