@@ -1,5 +1,9 @@
-// read-plan: a training plan as a PDF or a photo -> a draft plan (days,
+// read-plan: a training plan as a PDF or photos -> a draft plan (days,
 // exercises, sets, reps, rest, cues, week-by-week notes).
+//
+// Photos come as `images_b64`, up to MAX_IMAGES, read together as pages of one
+// plan: a tester screenshotted a plan in three parts and only the first was
+// read. A single `image_b64` still works for older copies of the app.
 //
 // Like read-notes, it only transcribes and never writes: the app shows the
 // draft for the person to check and edit before anything is saved. Targets
@@ -49,8 +53,11 @@ const Plan = z.object({
   page_note: z.string().nullable().describe("One line if this is not a training plan or can't be read"),
 });
 
-const SYSTEM = `You transcribe a person's training plan (a PDF or a photo) into a structured draft they will check before saving.
+const MAX_IMAGES = 6;
 
+const SYSTEM = `You transcribe a person's training plan (a PDF, or one or more photos or screenshots) into a structured draft they will check before saving.
+
+- Several pictures are pages of ONE plan, in the order given. A day can start on one picture and continue on the next: join it into one day. Pictures can overlap where screenshots were scrolled; don't repeat an exercise that appears twice because of the overlap.
 - One day per training session in the plan, in order. Skip rest days (mention them in description).
 - If the plan ties a session to a weekday (Monday, Tue...), set weekday 1 = Monday .. 7 = Sunday; otherwise null.
 - One exercise per row of the plan, in order. Supersets and complexes stay as one exercise named as the plan names it.
@@ -82,8 +89,11 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supa.auth.getUser();
     if (!user) return json({ error: "Not signed in" }, 401);
 
-    const { image_b64, pdf_b64, media_type } = await req.json();
-    if (!image_b64 && !pdf_b64) return json({ error: "No image or PDF" }, 400);
+    const { image_b64, images_b64, pdf_b64, media_type } = await req.json();
+    const images: string[] = (Array.isArray(images_b64) ? images_b64 : image_b64 ? [image_b64] : [])
+      .filter((x: unknown) => typeof x === "string" && x);
+    if (!images.length && !pdf_b64) return json({ error: "No image or PDF" }, 400);
+    if (images.length > MAX_IMAGES) return json({ error: `Up to ${MAX_IMAGES} pictures at a time.` }, 413);
 
     // Spend gate (migration 0008): the database counts the call against this
     // person's budget before Claude is asked. Any error counts as a refusal.
@@ -99,10 +109,10 @@ Deno.serve(async (req) => {
       messages: [{
         role: "user",
         content: [
-          pdf_b64
-            ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf_b64 } }
-            : { type: "image", source: { type: "base64", media_type: media_type || "image/jpeg", data: image_b64 } },
-          { type: "text", text: "Transcribe this training plan." },
+          ...(pdf_b64
+            ? [{ type: "document", source: { type: "base64", media_type: "application/pdf", data: pdf_b64 } }]
+            : images.map((data) => ({ type: "image", source: { type: "base64", media_type: media_type || "image/jpeg", data } }))),
+          { type: "text", text: images.length > 1 ? `Transcribe this training plan. The ${images.length} pictures are its pages, in order.` : "Transcribe this training plan." },
         ],
       }],
     });

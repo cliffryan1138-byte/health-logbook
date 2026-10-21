@@ -6,6 +6,7 @@ import { addMed, logDose, matchMed, medLine } from '../lib/meds'
 import { shrinkToJpeg } from '../lib/images'
 import { checkCrisis, openCrisis } from '../lib/crisis'
 import { checkReading, checkSymptom } from '../lib/pregnancy'
+import { SR, TTS, newRecognizer, takeListening, micProblem } from '../lib/voice'
 
 // Talk or type to Sparky. Testers asked for a microphone to speak back and
 // forth, and a chat. Both are this one sheet:
@@ -25,10 +26,8 @@ import { checkReading, checkSymptom } from '../lib/pregnancy'
 //
 // The conversation lives only in this sheet. Closing it clears it; the record
 // is what you saved. Speech uses the browser's own recognition and voice
-// (Safari and Chrome); browsers without them can still type.
-
-const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition)
-const TTS = typeof window !== 'undefined' && 'speechSynthesis' in window
+// (lib/voice); browsers without them can still type, and every way listening
+// can fail says so in plain words instead of going quiet.
 
 const TABLE = { meals: 'meals', vitals: 'vitals', exercise: 'exercise', symptoms: 'symptoms', doses: 'med_doses', medications: 'medications' }
 
@@ -69,6 +68,8 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
   const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  const [hint, setHint] = useState('')
+  const inputRef = useRef(null)
   const [listening, setListening] = useState(false)
   const [handsFree, setHandsFree] = useState(false)
   const [mute, setMute] = useState(() => { try { return localStorage.getItem('lb_sparky_mute') === '1' } catch { return false } })
@@ -79,6 +80,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
   const endRef = useRef(null)
   const camRef = useRef(null)
   const sentFirst = useRef(false)
+  const alive = useRef(true)
 
   msgsRef.current = msgs
   handsRef.current = handsFree
@@ -87,12 +89,34 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
   useEffect(() => { endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }) }, [msgs, busy])
   useEffect(() => { try { localStorage.setItem('lb_sparky_mute', mute ? '1' : '0') } catch { /* private mode */ } }, [mute])
   useEffect(() => {
-    // Once only: React's development mode runs mount effects twice.
-    if (firstPhoto && !sentFirst.current) { sentFirst.current = true; sendPhoto(firstPhoto) }
-    else if (listenFirst) startVoice()
-    return () => { recRef.current?.abort?.(); if (TTS) speechSynthesis.cancel() }
+    // Once only: React's development mode runs mount effects twice, and a
+    // second start would come too late for an iPhone.
+    if (sentFirst.current) return
+    sentFirst.current = true
+    if (firstPhoto) sendPhoto(firstPhoto)
+    else if (listenFirst) {
+      // The dock's tap already started the microphone (lib/voice); take it over.
+      const started = takeListening()
+      if (started) { setHandsFree(true); listen(started) }
+      else if (!SR) { setErr(micProblem('unsupported')); inputRef.current?.focus() }
+      // Opened without a tap-started mic: try, and ask for a tap if refused.
+      else { setHandsFree(true); listen(null, false) }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+  // Nothing a recogniser hears after the sheet has gone is acted on. The
+  // microphone itself is stopped in close(), not here: development mode's
+  // double mount would stop the one the tap started.
+  useEffect(() => { alive.current = true; return () => { alive.current = false; if (TTS) speechSynthesis.cancel() } }, [])
+
+  function stopVoice() {
+    setHandsFree(false); setListening(false)
+    const rec = recRef.current
+    if (rec) { rec.onresult = rec.onerror = rec.onend = null; try { rec.abort() } catch { /* already stopped */ } }
+    recRef.current = null
+    if (TTS) speechSynthesis.cancel()
+  }
+  function close() { stopVoice(); onClose() }
 
   function speak(line, then) {
     // Read through a ref: this runs from recognition callbacks set up turns ago.
@@ -105,50 +129,65 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
     speechSynthesis.speak(u)
   }
 
-  function listen() {
+  // `started` is a recogniser a tap already started ({ rec, events }); without
+  // one, a new one starts here. `tap` says whether this call is inside a tap.
+  // A hands-free turn starts after Sparky speaks, outside any tap, and an
+  // iPhone may refuse it or hear nothing: then it asks for a tap rather than
+  // reporting a permissions problem.
+  function listen(started, tap = false) {
     if (!SR) return
-    const rec = new SR()
-    rec.lang = 'en-US'
-    rec.interimResults = true
-    rec.continuous = false
+    const fromTap = Boolean(started) || tap
+    const rec = started?.rec || newRecognizer()
     let heard = ''
-    rec.onresult = (e) => {
+    let failed = ''
+    setHint('')
+    const onresult = (e) => {
       heard = Array.from(e.results).map((r) => r[0].transcript).join(' ').trim()
       setText(heard)
     }
-    rec.onerror = (e) => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-        setErr('Microphone access is off for this site. Allow it in your browser settings, or type instead.')
-        setHandsFree(false)
-      }
-    }
-    rec.onend = () => {
+    const onerror = (e) => { failed = e.error || 'error' }
+    const onend = () => {
+      if (!alive.current) return
       setListening(false)
-      // Silence ends hands-free mode rather than looping on an empty room.
-      if (heard) send(heard, true)
-      else setHandsFree(false)
+      if (heard) { send(heard, true); return }
+      setHandsFree(false)
+      if (failed === 'aborted') return
+      const quiet = !failed || ['no-speech', 'not-allowed', 'service-not-allowed'].includes(failed)
+      if (!fromTap && quiet) { setHint('Tap the mic to talk.'); return }
+      setErr(micProblem(failed || 'no-speech'))
     }
+    rec.onresult = onresult
+    rec.onerror = onerror
+    rec.onend = onend
     recRef.current = rec
-    try { rec.start(); setListening(true) } catch { setListening(false) }
+    setListening(true)
+    if (started) {
+      // Replay whatever arrived before this sheet was ready.
+      for (const [kind, e] of started.events) {
+        if (kind === 'result') onresult(e)
+        else if (kind === 'error') onerror(e)
+        else { onend(); return }
+      }
+      return
+    }
+    try { rec.start() } catch {
+      setListening(false); setHandsFree(false)
+      if (fromTap) setErr(micProblem('error')); else setHint('Tap the mic to talk.')
+    }
   }
 
+  // Only ever called from a tap (the mic in this sheet).
   function startVoice() {
-    setErr('')
-    if (!SR) { setErr('Talking isn’t available in this browser. Type instead — Safari or Chrome can listen.'); return }
+    setErr(''); setHint('')
+    if (!SR) { setErr(micProblem('unsupported')); inputRef.current?.focus(); return }
     // iPhone only lets a page speak if speech first starts inside a tap.
     if (TTS && !mute) { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance('')) }
     setHandsFree(true)
-    listen()
+    listen(null, true)
   }
 
   function toggleMic() {
-    if (listening || handsFree) {
-      setHandsFree(false)
-      recRef.current?.abort?.()
-      setListening(false)
-      if (TTS) speechSynthesis.cancel()
-      return
-    }
+    if (listening || handsFree) { stopVoice(); return }
     startVoice()
   }
 
@@ -248,7 +287,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
   }
 
   return (
-    <div className="scrim" onClick={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="scrim" onClick={(e) => e.target === e.currentTarget && close()}>
       <div className="sheet chat" role="dialog" aria-label="Talk to Sparky">
         <div className="chat-head">
           <img src="/sparky.png" alt="" width="36" height="36" />
@@ -259,7 +298,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
               <Icon name="speaker" />{mute && <i className="slash" />}
             </button>
           )}
-          <button type="button" className="chat-close" onClick={onClose}>Done</button>
+          <button type="button" className="chat-close" onClick={close}>Done</button>
         </div>
 
         <div className="chat-log" aria-live="polite">
@@ -268,7 +307,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
               <p>Hi {profile.display_name}. Ask me about your log, tell me what happened —
                 “I took two Advil at noon” or “headache, about a 4, started an hour ago” — or show me a picture:
                 your plate, a medicine label, a blood-pressure screen.</p>
-              <p className="note">Tap the mic to talk, or the camera for a picture. I draft entries; nothing is saved until you tap Save. I’m not a doctor.</p>
+              <p className="note">Tap the mic to talk, type below, or tap the camera for a picture. I draft entries; nothing is saved until you tap Save. I’m not a doctor.</p>
             </div>
           )}
           {msgs.map((m, i) => (
@@ -298,6 +337,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
         </div>
 
         {err && <p className="err">{err}</p>}
+        {!err && hint && <p className="note chat-hint">{hint}</p>}
 
         <form className="chat-bar" onSubmit={(e) => { e.preventDefault(); send() }}>
           <input ref={camRef} type="file" accept="image/*" hidden
@@ -310,7 +350,7 @@ export default function SparkyChat({ profile, meds, onLogged, onClose, listenFir
             aria-pressed={listening || handsFree} aria-label={listening || handsFree ? 'Stop talking' : 'Talk to Sparky'} onClick={toggleMic}>
             <Icon name="mic" />
           </button>
-          <input value={text} onChange={(e) => setText(e.target.value)} placeholder={listening ? 'Listening…' : 'Ask Sparky or tell him what happened'}
+          <input ref={inputRef} value={text} onChange={(e) => setText(e.target.value)} placeholder={listening ? 'Listening…' : 'Ask Sparky or tell him what happened'}
             aria-label="Message to Sparky" enterKeyHint="send" />
           <button type="submit" className="send" aria-label="Send" disabled={busy || !text.trim()}><Icon name="send" /></button>
         </form>

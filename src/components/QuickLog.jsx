@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import Icon from '../lib/icons'
 import PaperNotes from './PaperNotes'
 import { ACCEPT, fileKind } from '../lib/fileText'
+import { beginListening } from '../lib/voice'
 import { DoseSheet } from './Medications'
 import SymptomPicker from './SymptomPicker'
 import CheckIn from './CheckIn'
@@ -120,6 +121,14 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
     else { setPaperFile(file); setOpen('paper') }
   }
 
+  // Inside the tap: iPhones only allow the microphone and Sparky's voice then.
+  function talk() {
+    let muted = false
+    try { muted = localStorage.getItem('lb_sparky_mute') === '1' } catch { /* private mode */ }
+    beginListening({ muted })
+    onTalk?.()
+  }
+
   async function save(table, row) {
     setBusy(true); setErr('')
     const { error } = editing
@@ -233,8 +242,10 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
         <button className="manual" onClick={() => openSheet('choose')}>
           <Icon name="pen" /> <span className="long">Add manually</span><span className="short">Add</span>
         </button>
-        <button className="talk" onClick={() => onTalk?.()} aria-label="Talk to Sparky" title="Talk to Sparky">
-          <Icon name="mic" />
+        {/* Labelled: a bare mic read as "voice only", so when talking failed
+            testers thought the chat was gone. The mic starts in this tap. */}
+        <button className="talk" onClick={talk}>
+          <Icon name="mic" /> <span className="long">Talk to Sparky</span><span className="short">Sparky</span>
         </button>
         <input ref={fileRef} type="file" accept={ACCEPT} hidden onChange={onPhoto} />
       </div>
@@ -272,7 +283,7 @@ export default function QuickLog({ profile, meds = [], onLogged, openKind, onOpe
                 {CHOICES.map((c) => (
                   <button type="button" key={c.kind} className="choice"
                     // Talking opens Sparky; the mic must start inside this tap.
-                    onClick={() => { if (c.kind === 'talk') { close(); onTalk?.() } else openSheet(c.kind) }}>
+                    onClick={() => { if (c.kind === 'talk') { close(); talk() } else openSheet(c.kind) }}>
                     <span className="choice-ico"><Icon name={c.icon} /></span>
                     <span className="choice-text"><b>{c.label}</b><span>{c.hint}</span></span>
                   </button>
