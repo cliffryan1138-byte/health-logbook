@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import PlanEditor from '../components/PlanEditor'
 import {
   loadActivePlan, lastDoneDayId, lastSets, todaysDay, weekOf, finishWorkout, stopPlan, targetReps, WEEKDAYS,
@@ -46,6 +46,9 @@ const fmtClock = (s) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')
 export default function Workouts({ profile, onLogged }) {
   const [plan, setPlan] = useState(undefined) // undefined = loading, null = none
   const [dayId, setDayId] = useState(null)
+  // Swipe the Today card left or right to look through the plan's days.
+  const [slide, setSlide] = useState('')
+  const touch = useRef(null)
   const [last, setLast] = useState({})
   const [lastDone, setLastDone] = useState(null)
   const [session, setSession] = useState(() => loadSession(profile.id))
@@ -124,6 +127,16 @@ export default function Workouts({ profile, onLogged }) {
     }
   })
 
+  // Next (1) or previous (-1) day of the plan, wrapping round.
+  function stepDay(n) {
+    const len = plan.days.length
+    if (len < 2) return
+    const i = plan.days.findIndex((d) => d.id === activeDay?.id)
+    const next = i < 0 ? (n > 0 ? 0 : len - 1) : (i + n + len) % len
+    setSlide(n > 0 ? 'from-right' : 'from-left')
+    setDayId(plan.days[next].id)
+  }
+
   function start(day) {
     setSaved(''); setErr('')
     setSession(newSession(day, last))
@@ -198,7 +211,17 @@ export default function Workouts({ profile, onLogged }) {
       </div>
 
       {!session && (
-        <div className="card">
+        <div className="card day-card"
+          onTouchStart={(e) => { const t = e.touches[0]; touch.current = { x: t.clientX, y: t.clientY } }}
+          onTouchEnd={(e) => {
+            const s = touch.current
+            touch.current = null
+            if (!s) return
+            const t = e.changedTouches[0]
+            const dx = t.clientX - s.x, dy = t.clientY - s.y
+            // A clear sideways swipe, not a scroll that drifted.
+            if (Math.abs(dx) > 50 && Math.abs(dx) > 1.5 * Math.abs(dy)) stepDay(dx < 0 ? 1 : -1)
+          }}>
           <div className="card-head"><h3>{today.rest ? 'Rest day' : 'Today'}</h3></div>
           {today.rest && <p className="empty">Nothing is scheduled today. Recovery counts. Or pick a day below to train anyway.</p>}
           <div className="chips tight" role="group" aria-label="Pick a day">
@@ -209,8 +232,15 @@ export default function Workouts({ profile, onLogged }) {
             ))}
           </div>
           {activeDay && (
-            <>
-              <h3 className="day-title">{activeDay.title}</h3>
+            <div className={`day-slide ${slide}`} key={activeDay.id}>
+              <div className="day-nav">
+                {plan.days.length > 1 && <button type="button" className="day-step" aria-label="Previous day" onClick={() => stepDay(-1)}>‹</button>}
+                <h3 className="day-title">{activeDay.title}</h3>
+                {plan.days.length > 1 && <button type="button" className="day-step" aria-label="Next day" onClick={() => stepDay(1)}>›</button>}
+              </div>
+              {plan.days.length > 1 && (
+                <p className="day-count">Day {plan.days.findIndex((d) => d.id === activeDay.id) + 1} of {plan.days.length} · swipe for the others</p>
+              )}
               {activeDay.focus && <p className="note" style={{ marginTop: 0 }}>{activeDay.focus}</p>}
               {activeDay.notes && <p className="note day-notes">{activeDay.notes}</p>}
               <ol className="day-preview">
@@ -219,7 +249,7 @@ export default function Workouts({ profile, onLogged }) {
                 ))}
               </ol>
               <button type="button" className="btn" onClick={() => start(activeDay)}>Start {activeDay.title.replace(/\s*[—-].*$/, '')}</button>
-            </>
+            </div>
           )}
         </div>
       )}
@@ -289,6 +319,7 @@ export default function Workouts({ profile, onLogged }) {
 
       {!session && (
         <div className="plan-links">
+          <button type="button" className="link-btn" onClick={() => setEditing('edit')}>Edit this plan</button>
           <button type="button" className="link-btn" onClick={() => setEditing(true)}>Load a different plan</button>
           <button type="button" className="link-btn" onClick={stop}>Stop this plan</button>
         </div>
@@ -301,7 +332,8 @@ export default function Workouts({ profile, onLogged }) {
         </button>
       )}
 
-      {editing && <PlanEditor profile={profile} onClose={() => setEditing(false)} onSaved={() => { setSession(null); refresh() }} />}
+      {editing && <PlanEditor profile={profile} plan={editing === 'edit' ? plan : null}
+        onClose={() => setEditing(false)} onSaved={() => { setSession(null); refresh() }} />}
     </div>
   )
 }
