@@ -136,8 +136,8 @@ export default function Login() {
           <h1>{msg === 'unconfirmed' ? 'Confirm your email first' : 'Check your email'}</h1>
           <p>
             We sent a link to <b>{email.trim()}</b>. Open that email and tap the link in it, then come back
-            and sign in. It comes from noreply@mail.app.supabase.io; if it isn’t in your inbox in a minute
-            or two, look in Spam or Promotions.
+            and sign in. It comes from Daybook (noreply@wastegate.ai); if it isn’t in your inbox in a
+            minute or two, look in Spam or Promotions.
           </p>
           {err && <p className="err">{err}</p>}
           {resent && <p className="saved-note" role="status">✓ Sent again. Use the newest email.</p>}
