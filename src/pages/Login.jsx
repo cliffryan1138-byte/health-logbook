@@ -20,6 +20,32 @@ function GoogleMark() {
   )
 }
 
+// The project's password rule (Supabase Auth): a lowercase letter, a capital,
+// a number and a symbol. Checked here first, in plain words; a tester got the
+// server's version, which lists every symbol on the keyboard.
+const PASSWORD_NEEDS = [
+  [/[a-z]/, 'a lowercase letter'],
+  [/[A-Z]/, 'a capital letter'],
+  [/[0-9]/, 'a number'],
+  [/[^A-Za-z0-9]/, 'a symbol like ! or #'],
+]
+function passwordMissing(pw) {
+  return PASSWORD_NEEDS.filter(([re]) => !re.test(pw)).map(([, what]) => what)
+}
+const listOf = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`)
+
+// Supabase's messages, in words a tester can act on.
+function plain(error) {
+  const code = error?.code
+  if (code === 'weak_password') return 'That password is too easy to guess. Use a lowercase letter, a capital letter, a number and a symbol like ! or #.'
+  if (code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit' || error?.status === 429 || /for security purposes|rate limit/i.test(error?.message || '')) {
+    return 'That was tapped a few times quickly. Wait a minute, then try once.'
+  }
+  if (code === 'invalid_credentials') return 'That email and password don’t match. Check them, or tap Forgot password.'
+  if (code === 'user_already_exists' || code === 'email_exists') return 'That email already has an account. Sign in instead.'
+  return error?.message || 'Something went wrong. Try again.'
+}
+
 export default function Login() {
   const [mode, setMode] = useState('signin')
   const [email, setEmail] = useState('')
@@ -28,6 +54,7 @@ export default function Login() {
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [resent, setResent] = useState(false)
 
   async function submit(e) {
     e.preventDefault()
@@ -37,16 +64,33 @@ export default function Login() {
       setErr('Passwords don\'t match — retype them and try again.')
       return
     }
+    if (mode === 'signup' && passwordMissing(password).length) {
+      setErr(`Your password also needs ${listOf(passwordMissing(password))}.`)
+      return
+    }
     setBusy(true)
     const fn = mode === 'signin'
       ? supabase.auth.signInWithPassword({ email, password })
       : supabase.auth.signUp({ email, password })
     const { error, data } = await fn
     setBusy(false)
-    if (error) { setErr(error.message); return }
-    if (mode === 'signup' && !data.session) {
-      setMsg('Check your email to confirm your account, then sign in.')
-    }
+    // Signing in before confirming: show the confirm screen, with a resend.
+    if (error?.code === 'email_not_confirmed') { setMode('sent'); setMsg('unconfirmed'); return }
+    if (error) { setErr(plain(error)); return }
+    // A tester tapped Create account four more times because the form stayed
+    // up after it worked. Success now replaces the form.
+    if (mode === 'signup' && !data.session) { setMode('sent'); setMsg('') }
+  }
+
+  async function resend() {
+    setErr(''); setResent(false); setBusy(true)
+    const { error } = await supabase.auth.resend({
+      type: 'signup', email: email.trim(),
+      options: { emailRedirectTo: window.location.origin.replace(/\.+(?=(:\d+)?$)/, '') },
+    })
+    setBusy(false)
+    if (error) { setErr(plain(error)); return }
+    setResent(true)
   }
 
   // "Forgot password?" — Supabase emails a one-time link back to this origin.
@@ -66,7 +110,7 @@ export default function Login() {
     setMsg('If that email has an account, a reset link is on its way. Open it on this device.')
   }
 
-  const go = (m) => { setMode(m); setErr(''); setMsg('') }
+  const go = (m) => { setMode(m); setErr(''); setMsg(''); setResent(false) }
 
   // No redirect handler is needed here. This app is a single page with no
   // router, and supabase-js exchanges the PKCE code off the URL on startup
@@ -82,6 +126,33 @@ export default function Login() {
     // On success the browser has already left for Google, so this only runs
     // when the call failed outright — most often the provider being disabled.
     if (error) { setErr(error.message); setBusy(false) }
+  }
+
+  if (mode === 'sent') {
+    return (
+      <div className="authpage">
+        <div className="authcard">
+          <img className="mark" src="/sparky.png" alt="" width="72" height="72" />
+          <h1>{msg === 'unconfirmed' ? 'Confirm your email first' : 'Check your email'}</h1>
+          <p>
+            We sent a link to <b>{email.trim()}</b>. Open that email and tap the link in it, then come back
+            and sign in. It comes from noreply@mail.app.supabase.io; if it isn’t in your inbox in a minute
+            or two, look in Spam or Promotions.
+          </p>
+          {err && <p className="err">{err}</p>}
+          {resent && <p className="saved-note" role="status">✓ Sent again. Use the newest email.</p>}
+          <div className="actions">
+            <button className="btn" type="button" onClick={() => go('signin')}>I’ve confirmed — sign in</button>
+          </div>
+          <div className="swap">
+            Nothing arrived? <button type="button" onClick={resend} disabled={busy}>{busy ? 'Sending…' : 'Send it again'}</button>
+          </div>
+          <div className="swap">
+            <button type="button" onClick={() => go('signup')}>Use a different email</button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -104,7 +175,14 @@ export default function Login() {
             <label htmlFor="password">Password</label>
             <input id="password" type="password" required
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              value={password} onChange={(e) => setPassword(e.target.value)} />
+              value={password} onChange={(e) => { setPassword(e.target.value); setErr('') }} />
+            {mode === 'signup' && (
+              <p className="note pw-hint">
+                Use a lowercase letter, a capital letter, a number and a symbol like ! or #.
+                {password && passwordMissing(password).length > 0 && <> Still needs {listOf(passwordMissing(password))}.</>}
+                {password && !passwordMissing(password).length && <> ✓ Good.</>}
+              </p>
+            )}
           </div>
         )}
         {mode === 'signin' && (

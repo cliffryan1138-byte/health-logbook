@@ -964,3 +964,10 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   .med-report .statement { background: #f4f6f9; border-color: #bbb; font-size: 9pt; }
   .med-report .rep-quoted summary { list-style: none; }
 }
+
+/* Sign-up: the password rule under the field, before anyone breaks it. */
+.authcard .pw-hint { margin: 6px 0 0; font-size: 12.5px; color: var(--ink-faint); }
+/* .authcard p (grey, 20px under) outranked .err, so sign-in errors read as
+   ordinary grey text. Faults are --crit. */
+.authcard .err { color: var(--crit); margin: 0 0 12px; }
+.authcard .saved-note { margin: 0 0 12px; }
